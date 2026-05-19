@@ -62,6 +62,10 @@ export interface PlayerStateResponse {
   /** { "DIAMOND/EMERALD": { "diamond": "1.0000", "emerald": "4.2000" } } */
   locked_balance: Record<string, Record<string, string>>
   open_orders: OpenOrder[]
+  /** オフライン中のデポジット保留数 { "diamond": 5 } */
+  pending_deposit: Record<string, number>
+  /** オフライン中のウィズドロー保留数 { "diamond": 3 } */
+  pending_withdraw: Record<string, number>
 }
 
 export interface OpenOrder {

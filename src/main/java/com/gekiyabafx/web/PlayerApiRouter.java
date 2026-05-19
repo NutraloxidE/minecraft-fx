@@ -159,11 +159,19 @@ public final class PlayerApiRouter {
 
             // ── レスポンス組み立て ────────────────────────────────────────────
             Map<String, Object> resp = new LinkedHashMap<>();
-            resp.put("uuid",           playerUuid);
-            resp.put("name",           player.getName());
-            resp.put("hot_storage",    hotSnapshot);
-            resp.put("locked_balance", lockedSnapshot);
-            resp.put("open_orders",    openOrders);
+            // ── pending_deposit スナップショット ──────────────────────────────
+            Map<String, Integer> pendingDeposit = new LinkedHashMap<>(player.getPendingDeposit());
+
+            // ── pending_withdraw スナップショット ─────────────────────────────
+            Map<String, Integer> pendingWithdraw = new LinkedHashMap<>(player.getPendingWithdraw());
+
+            resp.put("uuid",            playerUuid);
+            resp.put("name",            player.getName());
+            resp.put("hot_storage",     hotSnapshot);
+            resp.put("locked_balance",  lockedSnapshot);
+            resp.put("open_orders",     openOrders);
+            resp.put("pending_deposit", pendingDeposit);
+            resp.put("pending_withdraw",pendingWithdraw);
 
             ctx.json(resp);
         } finally {

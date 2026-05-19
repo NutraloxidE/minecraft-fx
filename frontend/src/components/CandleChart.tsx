@@ -1,0 +1,127 @@
+/**
+ * ローソク足チャートコンポーネント
+ *
+ * lightweight-charts v5 を使ってローソク足を描画する。
+ * - 時間足セレクターで切り替え可能
+ * - executions の差分ポーリングによりリアルタイム更新
+ * - ダークモード対応（CSS カスタムプロパティ連動）
+ */
+
+import { useEffect, useRef, useState } from 'react'
+import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts'
+import type { IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts'
+import { aggregateCandles, TIMEFRAMES } from '@/lib/candles'
+import { useExecutionCache } from '@/hooks/useExecutionCache'
+
+interface Props {
+  pairId: string | null
+}
+
+export default function CandleChart({ pairId }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef     = useRef<IChartApi | null>(null)
+  const seriesRef    = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const [tfSec, setTfSec] = useState(60) // デフォルト: 1分足
+
+  const { executions, loading } = useExecutionCache(pairId)
+
+  // チャートの初期化（マウント時のみ）
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+
+    const chart = createChart(containerRef.current, {
+      layout: {
+        background: { type: ColorType.Solid, color: isDark ? '#1a1a1a' : '#ffffff' },
+        textColor: isDark ? '#9a9a9a' : '#6b6375',
+      },
+      grid: {
+        vertLines: { color: isDark ? '#2a2a2a' : '#e5e4e7' },
+        horzLines: { color: isDark ? '#2a2a2a' : '#e5e4e7' },
+      },
+      width:  containerRef.current.clientWidth,
+      height: 320,
+      timeScale: { timeVisible: true, secondsVisible: false },
+    })
+
+    // v5: addSeries(SeriesDefinition, options)
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor:   '#4caf82',
+      downColor: '#e05c5c',
+      borderUpColor:   '#4caf82',
+      borderDownColor: '#e05c5c',
+      wickUpColor:   '#4caf82',
+      wickDownColor: '#e05c5c',
+    })
+
+    chartRef.current  = chart
+    seriesRef.current = series
+
+    // リサイズ対応
+    const observer = new ResizeObserver(() => {
+      if (containerRef.current) {
+        chart.applyOptions({ width: containerRef.current.clientWidth })
+      }
+    })
+    observer.observe(containerRef.current)
+
+    return () => {
+      observer.disconnect()
+      chart.remove()
+      chartRef.current  = null
+      seriesRef.current = null
+    }
+  }, [])
+
+  // executions または時間足が変わったらローソク足を再集計してセットする
+  useEffect(() => {
+    if (!seriesRef.current) return
+    const candles = aggregateCandles(executions, tfSec)
+    const data: CandlestickData<Time>[] = candles.map((c) => ({
+      time:  c.time as Time,
+      open:  c.open,
+      high:  c.high,
+      low:   c.low,
+      close: c.close,
+    }))
+    seriesRef.current.setData(data)
+    if (data.length > 0) {
+      chartRef.current?.timeScale().fitContent()
+    }
+  }, [executions, tfSec])
+
+  return (
+    <div className="candle-chart-wrap">
+      {/* 時間足セレクター */}
+      <div className="timeframe-selector">
+        {TIMEFRAMES.map((tf) => (
+          <button
+            key={tf.sec}
+            className={`tf-btn${tfSec === tf.sec ? ' active' : ''}`}
+            onClick={() => setTfSec(tf.sec)}
+          >
+            {tf.label}
+          </button>
+        ))}
+      </div>
+
+      {/* チャート本体 */}
+      <div
+        ref={containerRef}
+        className="candle-chart-container"
+        style={{ position: 'relative', width: '100%', height: 320 }}
+      >
+        {loading && executions.length === 0 && (
+          <div className="chart-loading">読み込み中...</div>
+        )}
+        {!loading && executions.length === 0 && pairId && (
+          <div className="chart-loading">約定データがありません</div>
+        )}
+        {!pairId && (
+          <div className="chart-loading">ペアを選択してください</div>
+        )}
+      </div>
+    </div>
+  )
+}

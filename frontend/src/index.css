@@ -494,3 +494,274 @@ code {
   color: #e05c5c;
 }
 
+/* ─── 入出金パネル ────────────────────────────────────────── */
+
+.deposit-panel {
+  padding: 0.75rem 1rem;
+}
+
+.deposit-panel-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.75rem;
+}
+
+.deposit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.deposit-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.deposit-input {
+  flex: 1;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--code-bg);
+  color: var(--text-h);
+  min-width: 0;
+}
+
+.deposit-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.deposit-btn,
+.withdraw-btn {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.deposit-btn {
+  background: #4caf82;
+  color: #fff;
+}
+
+.deposit-btn:hover { background: #3d9e73; }
+.deposit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.withdraw-btn {
+  background: #e05c5c;
+  color: #fff;
+}
+
+.withdraw-btn:hover { background: #cc4a4a; }
+.withdraw-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.deposit-message {
+  font-size: 0.8rem;
+  margin: 0.25rem 0 0;
+  min-height: 1.2em;
+}
+
+.deposit-message.ok  { color: #4caf82; }
+.deposit-message.err { color: #e05c5c; }
+
+.pending-section {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.pending-title {
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.3rem;
+}
+
+.pending-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.pending-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+}
+
+.pending-list li.pending-dep  { background: rgba(76, 175, 130, 0.12); color: #4caf82; }
+.pending-list li.pending-with { background: rgba(224, 92, 92, 0.12);  color: #e05c5c; }
+
+/* ─── 管理者画面 ───────────────────────────────────────── */
+
+.admin-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-main {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.admin-page-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-h);
+  margin: 0 0 1rem;
+}
+
+.admin-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  background: var(--code-bg);
+}
+
+.admin-section-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.75rem;
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-pairs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.admin-pairs-table th,
+.admin-pairs-table td {
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.admin-pairs-table th {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.admin-row-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.admin-edit-btn,
+.admin-save-btn,
+.admin-cancel-btn,
+.admin-delete-btn {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-h);
+}
+
+.admin-edit-btn:hover   { border-color: var(--accent); color: var(--accent); }
+.admin-save-btn:hover   { border-color: #4caf82; color: #4caf82; }
+.admin-cancel-btn:hover { border-color: var(--text); }
+.admin-delete-btn:hover { border-color: #e05c5c; color: #e05c5c; }
+
+.admin-input-sm {
+  width: 90px;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+.admin-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.admin-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: flex-end;
+}
+
+.admin-form-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--text);
+}
+
+.admin-check-label {
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+}
+
+.admin-input {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.82rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+  width: 160px;
+}
+
+.admin-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.admin-submit-btn {
+  align-self: flex-start;
+  padding: 0.35rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.admin-submit-btn:hover    { opacity: 0.85; }
+.admin-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.admin-msg {
+  font-size: 0.8rem;
+  margin: 0.2rem 0 0;
+}
+.admin-msg.ok  { color: #4caf82; }
+.admin-msg.err { color: #e05c5c; }
+
+.admin-loading { font-size: 0.85rem; color: var(--text); padding: 1rem 0; }
+.admin-err-msg { font-size: 0.85rem; color: #e05c5c; }

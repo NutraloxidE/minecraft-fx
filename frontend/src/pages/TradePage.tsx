@@ -15,6 +15,8 @@ import PairSelector from '@/components/PairSelector'
 import OrderBookView from '@/components/OrderBookView'
 import OrderForm from '@/components/OrderForm'
 import OpenOrders from '@/components/OpenOrders'
+import CandleChart from '@/components/CandleChart'
+import DepositPanel from '@/components/DepositPanel'
 import type { PairSummary, PlaceOrderResponse } from '@/types/api'
 
 export default function TradePage() {
@@ -89,6 +91,11 @@ export default function TradePage() {
         onChange={setSelectedPairId}
       />
 
+      {/* ローソク足チャート */}
+      <section className="trade-section">
+        <CandleChart pairId={selectedPairId} />
+      </section>
+
       {/* メインエリア */}
       <main className="trade-main trade-layout">
         {/* 板 */}
@@ -121,6 +128,9 @@ export default function TradePage() {
               </ul>
             )}
           </div>
+
+          {/* 入出金 */}
+          <DepositPanel playerState={playerState} onDone={refresh} />
         </section>
       </main>
 

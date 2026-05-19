@@ -44,9 +44,9 @@
 - [x] Step 19: **API クライアント層** — BigDecimal文字列の受け取り・`Authorization: Bearer` ヘッダー付与を共通化
 - [x] Step 20: **認証フロー** — `/trade?otp=...` の3ステート処理・localStorage管理
 - [x] Step 21: **基本UI** — ペア選択・板表示・注文パネル・保有注文一覧
-- [ ] Step 22: **チャート** — `executions` キャッシュ・差分ポーリング・時間足セレクター・ローソク足集計
-- [ ] Step 23: **入出金パネル** — Pending状態の表示
-- [ ] Step 24: **管理者画面** — `/admin` OTP認証・ペア管理UI
+- [x] Step 22: **チャート** — `executions` キャッシュ・差分ポーリング・時間足セレクター・ローソク足集計
+- [x] Step 23: **入出金パネル** — Pending状態の表示
+- [x] Step 24: **管理者画面** — `/admin` OTP認証・ペア管理UI
 
 ### Phase 6 — 統合テスト
 - [ ] Step 25: **E2E統合検証** — アイテム入金→発注→約定→引き出しの一連のフローを実際のMinecraftサーバで検証
