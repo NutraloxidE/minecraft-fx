@@ -41,7 +41,7 @@ plugins/GekiyabaFX/
 - プレイヤーは **指値注文 (Limit Order)** または **成行注文 (Market Order)** を出す。
 - サーバー側の **マッチングエンジン** が各ペアのBid/Askを突き合わせ、約定させる。
 - **オーダーブックはペアごとに独立して管理される。**
-- 約定が発生した瞬間に、そのペアの `rates_history` が更新される。
+- 約定が発生した瞬間に、そのペアの `executions` に約定レコードが追記され、`last_price` が更新される。
 - **数値の表現精度は小数点以下4桁とする。** ブラウザ上では `0.0001` 単位での売買・送金が可能。
 - **数値の取り扱い方針:** 残高・注文数量・価格のすべてを、メモリ上・JSON保存・APIレスポンスにわたって **`BigDecimal` で統一する。** `double` / `float` は一切使用しない。
   - `scale=4`・`RoundingMode.HALF_UP` を全演算に統一適用する。
@@ -60,8 +60,8 @@ plugins/GekiyabaFX/
       "base": "diamond",
       "quote": "emerald",
       "enabled": true,
-      "min_amount": 0.0001,
-      "min_price": 0.0001,
+      "min_amount": "0.0001",
+      "min_price": "0.0001",
       "order_book": {
         "bids": [
           {
@@ -69,9 +69,9 @@ plugins/GekiyabaFX/
             "uuid": "de305d54-...",
             "type": "LIMIT",
             "side": "BUY",
-            "price": 4.2,
-            "amount": 0.5,
-            "filled": 0.0,
+            "price": "4.2000",
+            "amount": "0.5000",
+            "filled": "0.0000",
             "status": "OPEN",
             "created_at": 1716142000
           }
@@ -82,9 +82,9 @@ plugins/GekiyabaFX/
             "uuid": "ab12ef56-...",
             "type": "LIMIT",
             "side": "SELL",
-            "price": 4.5,
-            "amount": 5.0,
-            "filled": 0.0,
+            "price": "4.5000",
+            "amount": "5.0000",
+            "filled": "0.0000",
             "status": "OPEN",
             "created_at": 1716142010
           }
@@ -96,26 +96,26 @@ plugins/GekiyabaFX/
           "uuid": "de305d54-...",
           "type": "LIMIT",
           "side": "BUY",
-          "price": 4.1,
-          "amount": 1.0,
-          "filled": 1.0,
+          "price": "4.1000",
+          "amount": "1.0000",
+          "filled": "1.0000",
           "status": "FILLED",
           "created_at": 1716141000,
           "closed_at": 1716141500
         }
       ],
       "executions": [
-        { "timestamp": 1716142005, "price": 4.3, "amount": 0.5 },
-        { "timestamp": 1716142062, "price": 4.4, "amount": 1.0 }
+        { "timestamp": 1716142005, "price": "4.3000", "amount": "0.5000" },
+        { "timestamp": 1716142062, "price": "4.4000", "amount": "1.0000" }
       ],
-      "last_price": 4.3
+      "last_price": "4.3000"
     },
     "DIAMOND/IRON": {
       "base": "diamond",
       "quote": "iron_ingot",
       "enabled": false,
-      "min_amount": 0.0001,
-      "min_price": 0.0001,
+      "min_amount": "0.0001",
+      "min_price": "0.0001",
       "order_book": { "bids": [], "asks": [] },
       "order_history": [],
       "executions": [],
@@ -126,18 +126,18 @@ plugins/GekiyabaFX/
     "de305d54-75b4-431b-adb2-eb6b9e546013": {
       "name": "R1cefarm",
       "hot_storage": {
-        "diamond": 120.5025,
-        "emerald": 4500.0000,
-        "iron_ingot": 0.0
+        "diamond": "120.5025",
+        "emerald": "4500.0000",
+        "iron_ingot": "0.0000"
       },
       "locked_balance": {
         "DIAMOND/EMERALD": {
-          "diamond": 0.0,
-          "emerald": 2.1
+          "diamond": "0.0000",
+          "emerald": "2.1000"
         },
         "DIAMOND/IRON": {
-          "diamond": 0.5,
-          "iron_ingot": 0.0
+          "diamond": "0.5000",
+          "iron_ingot": "0.0000"
         }
       },
       "pending_withdraw": {
@@ -159,6 +159,7 @@ plugins/GekiyabaFX/
 | `pairs` | ペアIDをキーとするオブジェクト。ペアは動的に追加可能。 |
 | `pairs.<ID>.enabled` | `false` の場合、新規注文を受け付けない。既存注文はキャンセル扱いで返金。 |
 | `pairs.<ID>.min_amount` | そのペアの最小注文数量（`BigDecimal`）。管理者が設定。 |
+| `pairs.<ID>.min_price` | そのペアの最小注文価格（`BigDecimal`）。管理者が設定。 |
 | `pairs.<ID>.order_book` | そのペア専用のBid/Ask配列。他ペアと完全に独立。 |
 | `pairs.<ID>.order_history` | FILLED / CANCELLED になった注文の履歴。最大保持件数は `config.yml` で設定（デフォルト: `500件/ペア`）。 |
 | `pairs.<ID>.executions` | そのペアの生の約定履歴。`{ timestamp, price, amount }` の配列。最大保持件数は `config.yml` で設定（デフォルト: `10000件/ペア`）。ローソク足はフロントエンドが任意の時間足で動的集計する。 |
@@ -174,6 +175,7 @@ plugins/GekiyabaFX/
 ### 4.1 内蔵Webサーバー (Javalin) の要件
 - **ポート番号:** デフォルト `3010` (config.yml で可変)
 - **静的ファイル配信:** `plugins/GekiyabaFX/www/` を外部ディレクトリ（Location.EXTERNAL）としてマウントし、SPA（Single Page Application）として配信する。
+- **SPAフォールバック:** `/api/*` および静的ファイル（`.js`・`.css`・`.png` 等の拡張子付きパス）以外の全GETリクエストは `www/index.html` を返すようにフォールバックルートを設定する。これにより `/trade?otp=...` や `/admin` への直接アクセス・リロード時に `404` にならない。
 - **CORS設定:** 開発中のReact（localhost:5173など）からのクロスオリジンリクエストを許可するため、開発モード時は `anyHost()` を有効化する。
 
 ### 4.2 プレイヤー認証フロー（ワンタイムパスワード方式）
@@ -217,25 +219,24 @@ plugins/GekiyabaFX/
 - `POST /api/auth`
 - `GET /api/pairs`
 - `GET /api/orderbook`
-- `GET /api/candles`
+- `GET /api/executions`
 - `/api/admin/*`（独自の管理者セッショントークンで別途保護）
 
 1. `GET /api/state`
-   - **用途:** チャート描画用レート、プレイヤーの現在のホットストレージ残高・保有注文の取得。
-   - **クエリパラメータ:** `?pair=DIAMOND/EMERALD`
+   - **用途:** プレイヤーの現在のホットストレージ残高・ロック残高・保有注文の取得。
    - **認証:** `Authorization: Bearer <session_token>`（UUIDはトークンから取得）
    - **レスポンス:**
      ```json
      {
-       "hot_storage": { "diamond": 120.5025, "emerald": 4500.0 },
+       "hot_storage": { "diamond": "120.5025", "emerald": "4500.0000" },
        "locked_balance": {
-         "DIAMOND/EMERALD": { "diamond": 0.0, "emerald": 2.1 },
-         "DIAMOND/IRON":    { "diamond": 0.5, "iron_ingot": 0.0 }
+         "DIAMOND/EMERALD": { "diamond": "0.0000", "emerald": "2.1000" },
+         "DIAMOND/IRON":    { "diamond": "0.5000", "iron_ingot": "0.0000" }
        },
-       "open_orders": [ { "order_id": "550e8400-e29b-41d4-a716-446655440001", "pair": "DIAMOND/EMERALD", "side": "BUY", "price": 4.2, "amount": 0.5, "filled": 0.0 } ]
+       "open_orders": [ { "order_id": "550e8400-e29b-41d4-a716-446655440001", "pair": "DIAMOND/EMERALD", "side": "BUY", "price": "4.2000", "amount": "0.5000", "filled": "0.0000" } ]
      }
      ```
-   - ローソク足データは含まない。チャート描画は `GET /api/candles` を使用すること。
+   - ローソク足データは含まない。チャート描画は `GET /api/executions` を使用すること。
    - `open_orders` は全ペアを横断して、セッショントークンに紐づくプレイヤーの注文のみを返す。
 
 2. `GET /api/pairs`
@@ -243,7 +244,7 @@ plugins/GekiyabaFX/
    - **レスポンス:**
      ```json
      [
-       { "id": "DIAMOND/EMERALD", "base": "diamond", "quote": "emerald", "enabled": true, "last_price": 4.3 },
+       { "id": "DIAMOND/EMERALD", "base": "diamond", "quote": "emerald", "enabled": true, "last_price": "4.3000" },
        { "id": "DIAMOND/IRON",    "base": "diamond", "quote": "iron_ingot", "enabled": false, "last_price": null }
      ]
      ```
@@ -255,10 +256,10 @@ plugins/GekiyabaFX/
      ```json
      {
        "pair": "DIAMOND/EMERALD",
-       "bids": [ { "price": 4.2, "total_amount": 25.0 } ],
-       "asks": [ { "price": 4.5, "total_amount": 15.0 } ],
-       "spread": 0.3,
-       "last_price": 4.3
+       "bids": [ { "price": "4.2000", "total_amount": "25.0000" } ],
+       "asks": [ { "price": "4.5000", "total_amount": "15.0000" } ],
+       "spread": "0.3000",
+       "last_price": "4.3000"
      }
      ```
 
@@ -270,8 +271,8 @@ plugins/GekiyabaFX/
    - **レスポンス:**
      ```json
      [
-       { "timestamp": 1716142005, "price": 4.3, "amount": 0.5 },
-       { "timestamp": 1716142062, "price": 4.4, "amount": 1.0 }
+       { "timestamp": 1716142005, "price": "4.3000", "amount": "0.5000" },
+       { "timestamp": 1716142062, "price": "4.4000", "amount": "1.0000" }
      ]
      ```
    - `since` を指定した場合、そのタイムスタンプより新しい約定のみを返す。変化がない場合は空配列 `[]` を返す。
@@ -281,7 +282,7 @@ plugins/GekiyabaFX/
    - **用途:** 新規注文の発注（指値 or 成行）。
    - **パラメータ:**
      ```json
-     { "pair": "DIAMOND/EMERALD", "type": "LIMIT|MARKET", "side": "BUY|SELL", "price": 4.2, "amount": 0.5 }
+     { "pair": "DIAMOND/EMERALD", "type": "LIMIT|MARKET", "side": "BUY|SELL", "price": "4.2000", "amount": "0.5000" }
      ```
      ※ `type: MARKET` の場合は `price` フィールド不要。
      ※ `type: MARKET` かつ `side: BUY` の場合は `max_spend` フィールド（`BigDecimal`）が**必須**。`max_spend` 分の `quote` アイテムを `locked_balance` にロックし、約定後に余剰分を `hot_storage` へ即時返還する。`max_spend` が不足して部分約定になった場合、残量はキャンセルとして処理する。
@@ -315,9 +316,9 @@ plugins/GekiyabaFX/
         {
           "order_id": "550e8400-e29b-41d4-a716-446655440003",
           "status": "FILLED",
-          "filled": 0.5,
-          "avg_price": 4.3,
-          "remaining": 0.0
+          "filled": "0.5000",
+          "avg_price": "4.3000",
+          "remaining": "0.0000"
         }
         ```
         - `status`: `OPEN` / `PARTIALLY_FILLED` / `FILLED`
@@ -339,7 +340,7 @@ plugins/GekiyabaFX/
      2. **[オンラインの場合]** `BukkitScheduler` でメインスレッドに同期し、`player.getInventory()` に指定アイテムが `amount` 以上あるか確認。
         - 在庫が足りる場合 ➔ `player.getInventory().removeItem()` でアイテムを回収し、`hot_storage` へ加算して `200 OK`
         - アイテムが不足の場合 ➔ 処理をロールバックし `400 Bad Request (Insufficient Items)` を返す。
-     3. **[オフラインの場合]** `pending_deposit` に数量を加算。`200 OK (Pending)` を返す。次回ログイン時にインベントリからの回収を試みる（後述 4.5）。
+     3. **[オフラインの場合]** `pending_deposit` に数量を加算。`200 OK (Pending)` を返す。次回ログイン時にインベントリからの回収を試みる（後述 4.7）。
 
 8. `POST /api/withdraw`
    - **用途:** ホットストレージからマイクラのインベントリへの引き出し。
@@ -389,7 +390,7 @@ plugins/GekiyabaFX/
 
 2. `POST /api/admin/pairs`
    - **用途:** 新規取引ペアの追加。
-   - **パラメータ:** `{ "id": "DIAMOND/IRON", "base": "diamond", "quote": "iron_ingot", "min_amount": 0.001, "min_price": 0.001 }`
+   - **パラメータ:** `{ "id": "DIAMOND/IRON", "base": "diamond", "quote": "iron_ingot", "min_amount": "0.0010", "min_price": "0.0010" }`
    - **処理:** `pairs` に新規エントリを `enabled: false` で追加し、`storage.json` を保存。
 
 3. `PATCH /api/admin/pairs/:id`
