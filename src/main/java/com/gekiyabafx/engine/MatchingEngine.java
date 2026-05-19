@@ -150,6 +150,12 @@ public final class MatchingEngine {
             StorageData data,
             PluginConfig config
     ) {
+        // 既にクローズ済みの注文への二重キャンセルを防ぐ（無限アイテム増殖バグ対策）
+        if (order.getStatus() == OrderStatus.CANCELLED
+                || order.getStatus() == OrderStatus.FILLED) {
+            return;
+        }
+
         PlayerData pd = data.getPlayers().get(order.getUuid());
         if (pd == null) return;
 

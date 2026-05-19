@@ -354,6 +354,10 @@ public final class PlayerApiRouter {
                     return;
                 }
 
+                // 板から除去（残したままだとマッチングループで拾われ続ける）
+                book.getBids().remove(found);
+                book.getAsks().remove(found);
+
                 Pair pair = data.getPairs().get(pairId);
                 MatchingEngine.cancelOrder(pairId, pair, found, data, config);
                 sm.markDirty();
