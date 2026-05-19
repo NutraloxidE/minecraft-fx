@@ -1,0 +1,496 @@
+:root {
+  --text: #6b6375;
+  --text-h: #08060d;
+  --bg: #fff;
+  --border: #e5e4e7;
+  --code-bg: #f4f3ec;
+  --accent: #aa3bff;
+  --accent-bg: rgba(170, 59, 255, 0.1);
+  --accent-border: rgba(170, 59, 255, 0.5);
+  --social-bg: rgba(244, 243, 236, 0.5);
+  --shadow:
+    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 18px/145% var(--sans);
+  letter-spacing: 0.18px;
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  @media (max-width: 1024px) {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #9ca3af;
+    --text-h: #f3f4f6;
+    --bg: #16171d;
+    --border: #2e303a;
+    --code-bg: #1f2028;
+    --accent: #c084fc;
+    --accent-bg: rgba(192, 132, 252, 0.15);
+    --accent-border: rgba(192, 132, 252, 0.5);
+    --social-bg: rgba(47, 48, 58, 0.5);
+    --shadow:
+      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+  }
+
+  #social .button-icon {
+    filter: invert(1) brightness(2);
+  }
+}
+
+#root {
+  width: 1126px;
+  max-width: 100%;
+  margin: 0 auto;
+  text-align: center;
+  border-inline: 1px solid var(--border);
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+h1,
+h2 {
+  font-family: var(--heading);
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+h1 {
+  font-size: 56px;
+  letter-spacing: -1.68px;
+  margin: 32px 0;
+  @media (max-width: 1024px) {
+    font-size: 36px;
+    margin: 20px 0;
+  }
+}
+h2 {
+  font-size: 24px;
+  line-height: 118%;
+  letter-spacing: -0.24px;
+  margin: 0 0 8px;
+  @media (max-width: 1024px) {
+    font-size: 20px;
+  }
+}
+p {
+  margin: 0;
+}
+
+code,
+.counter {
+  font-family: var(--mono);
+  display: inline-flex;
+  border-radius: 4px;
+  color: var(--text-h);
+}
+
+code {
+  font-size: 15px;
+  line-height: 135%;
+  padding: 4px 8px;
+  background: var(--code-bg);
+}
+
+/* ─── GekiyabaFX 共通レイアウト ───────────────────────────── */
+
+.auth-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  gap: 1rem;
+  background: var(--bg);
+}
+
+.auth-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.auth-message {
+  color: var(--text);
+  font-size: 1rem;
+  text-align: center;
+  max-width: 480px;
+  line-height: 1.6;
+}
+
+.trade-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1.2rem;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.trade-header-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--text-h);
+  flex: 1;
+}
+
+.trade-header-user {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.trade-header-logout {
+  font-size: 0.85rem;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.trade-header-logout:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.trade-page,
+.admin-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  background: var(--bg);
+}
+
+.trade-main {
+  flex: 1;
+}
+
+/* ─── トレード レイアウト ──────────────────────────────────── */
+
+.trade-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  align-items: start;
+}
+
+.trade-section {
+  padding: 0 1rem 1rem;
+}
+
+.trade-section-ob {
+  padding: 0;
+}
+
+.trade-section-form {
+  padding: 0;
+}
+
+.section-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ─── ペア選択 ────────────────────────────────────────────── */
+
+.pair-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.pair-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  gap: 0.1rem;
+  min-width: 110px;
+}
+
+.pair-btn:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+}
+
+.pair-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.pair-btn-id {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.pair-btn-price {
+  font-size: 0.75rem;
+  color: var(--text);
+}
+
+.pair-selector-empty {
+  font-size: 0.85rem;
+  color: var(--text);
+  padding: 0.3rem 0;
+}
+
+/* ─── 板 ──────────────────────────────────────────────────── */
+
+.orderbook {
+  font-size: 0.78rem;
+  font-family: var(--mono);
+}
+
+.orderbook-empty {
+  padding: 1rem 0.75rem;
+  color: var(--text);
+  font-family: var(--sans);
+}
+
+.orderbook-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.72rem;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.orderbook-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  padding: 0.18rem 0.75rem;
+}
+
+.orderbook-row.ask .ob-price { color: #e05c5c; }
+.orderbook-row.bid .ob-price { color: #4caf82; }
+
+.orderbook-spread {
+  text-align: center;
+  padding: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--text);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 92%, var(--border));
+}
+
+.orderbook-row-empty {
+  padding: 0.5rem 0.75rem;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.78rem;
+}
+
+/* ─── 注文フォーム ─────────────────────────────────────────── */
+
+.order-form {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.order-form-empty {
+  padding: 1rem 0.75rem;
+  color: var(--text);
+}
+
+.order-side-tabs,
+.order-type-tabs {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.side-tab,
+.type-tab {
+  flex: 1;
+  padding: 0.35rem 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.side-tab.buy.active  { background: rgba(76,175,130,0.15); border-color: #4caf82; color: #4caf82; }
+.side-tab.sell.active { background: rgba(224,92,92,0.15);  border-color: #e05c5c; color: #e05c5c; }
+.type-tab.active      { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+
+.order-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.order-field input {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.order-field input:focus {
+  outline: none;
+  border-color: var(--accent-border);
+}
+
+.order-error {
+  font-size: 0.8rem;
+  color: #e05c5c;
+  margin: 0;
+}
+
+.order-submit {
+  padding: 0.5rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.order-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+.order-submit.buy  { background: #4caf82; color: #fff; }
+.order-submit.sell { background: #e05c5c; color: #fff; }
+
+/* ─── 残高 ────────────────────────────────────────────────── */
+
+.balance-box {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.balance-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.5rem;
+}
+
+.balance-empty {
+  font-size: 0.8rem;
+  color: var(--text);
+  margin: 0;
+}
+
+.balance-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.balance-list li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+}
+
+.balance-item { color: var(--text); }
+.balance-amount { font-family: var(--mono); color: var(--text-h); }
+
+/* ─── 保有注文 ────────────────────────────────────────────── */
+
+.open-orders {
+  padding: 0.75rem 1rem;
+}
+
+.open-orders-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.6rem;
+}
+
+.open-orders-empty {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin: 0;
+}
+
+.open-orders-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.open-orders-table th,
+.open-orders-table td {
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.open-orders-table th {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.open-orders-table td.bid { color: #4caf82; }
+.open-orders-table td.ask { color: #e05c5c; }
+
+.cancel-btn {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.cancel-btn:hover {
+  border-color: #e05c5c;
+  color: #e05c5c;
+}
+

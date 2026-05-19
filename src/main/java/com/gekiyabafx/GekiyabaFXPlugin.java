@@ -7,6 +7,9 @@ import com.gekiyabafx.config.PluginConfig;
 import com.gekiyabafx.listener.PlayerJoinListener;
 import com.gekiyabafx.storage.StorageManager;
 import com.gekiyabafx.web.AuthRouter;
+import com.gekiyabafx.web.AdminApiRouter;
+import com.gekiyabafx.web.DepositWithdrawRouter;
+import com.gekiyabafx.web.PlayerApiRouter;
 import com.gekiyabafx.web.PublicApiRouter;
 import com.gekiyabafx.web.WebServer;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -110,7 +113,18 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
         // ⑩ 公開 API エンドポイントを登録する（GET /api/pairs ・ /api/orderbook ・ /api/executions）
         new PublicApiRouter().register(webServer.getApp());
-        // Step 13 以降: プレイヤー API ・管理者 API エンドポイントをここに追加する。
+
+        // ② プレイヤー API エンドポイントを登録する
+        //    GET /api/state ・ POST /api/order ・ DELETE /api/order/:id
+        new PlayerApiRouter(playerSessionManager, pluginConfig).register(webServer.getApp());
+
+        // ⑯ 入出金 API エンドポイントを登録する
+        //    POST /api/deposit ・ POST /api/withdraw
+        new DepositWithdrawRouter(this, playerSessionManager).register(webServer.getApp());
+
+        // ⑰ 管理者 API エンドポイントを登録する
+        //    GET|POST /api/admin/pairs ・ PATCH|DELETE /api/admin/pairs/:id
+        new AdminApiRouter(adminSessionManager).register(webServer.getApp());
     }
 
     @Override

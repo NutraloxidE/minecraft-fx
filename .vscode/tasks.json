@@ -84,6 +84,20 @@
 			"command": "c:\\git\\minecraft-fx\\run-tests.bat",
 			"problemMatcher": [],
 			"group": "test"
+		},
+		{
+			"label": "Run Tests",
+			"type": "shell",
+			"command": "c:\\git\\minecraft-fx\\run-tests.bat",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Run Tests",
+			"type": "shell",
+			"command": "c:\\git\\minecraft-fx\\run-tests.bat",
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }

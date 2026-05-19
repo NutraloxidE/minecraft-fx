@@ -35,15 +35,15 @@
 - [x] Step 12: **公開API** — `GET /api/pairs`・`GET /api/orderbook`・`GET /api/executions`
 - [x] Step 13: **マッチングエンジンロジック（コア）** — Price-Time Priority・指値/成行・部分約定・残高ロック/返還をクラス単体で実装
 - [x] Step 14: **マッチングエンジン単体テスト** — 指値/成行・部分約定・残高ロック/返還の検証をこの時点で実施（最後まで待たない）
-- [ ] Step 15: **プレイヤーAPI** — `GET /api/state`・`POST /api/order`（マッチングエンジンのAPIエンドポイント接続）・`DELETE /api/order`
-- [ ] Step 16: **入出金API** — `POST /api/deposit`・`POST /api/withdraw`（BukkitScheduler同期処理）
-- [ ] Step 17: **管理者API** — `GET|POST /api/admin/pairs`・`PATCH|DELETE /api/admin/pairs/:id`
+- [x] Step 15: **プレイヤーAPI** — `GET /api/state`・`POST /api/order`（マッチングエンジンのAPIエンドポイント接続）・`DELETE /api/order`
+- [x] Step 16: **入出金API** — `POST /api/deposit`・`POST /api/withdraw`（BukkitScheduler同期処理）
+- [x] Step 17: **管理者API** — `GET|POST /api/admin/pairs`・`PATCH|DELETE /api/admin/pairs/:id`
 
 ### Phase 5 — フロントエンド
-- [ ] Step 18: **Vite + React + TypeScript プロジェクト作成** — `js-big-decimal`・`@tradingview/lightweight-charts` インストール
-- [ ] Step 19: **API クライアント層** — BigDecimal文字列の受け取り・`Authorization: Bearer` ヘッダー付与を共通化
-- [ ] Step 20: **認証フロー** — `/trade?otp=...` の3ステート処理・localStorage管理
-- [ ] Step 21: **基本UI** — ペア選択・板表示・注文パネル・保有注文一覧
+- [x] Step 18: **Vite + React + TypeScript プロジェクト作成** — `js-big-decimal`・`@tradingview/lightweight-charts` インストール
+- [x] Step 19: **API クライアント層** — BigDecimal文字列の受け取り・`Authorization: Bearer` ヘッダー付与を共通化
+- [x] Step 20: **認証フロー** — `/trade?otp=...` の3ステート処理・localStorage管理
+- [x] Step 21: **基本UI** — ペア選択・板表示・注文パネル・保有注文一覧
 - [ ] Step 22: **チャート** — `executions` キャッシュ・差分ポーリング・時間足セレクター・ローソク足集計
 - [ ] Step 23: **入出金パネル** — Pending状態の表示
 - [ ] Step 24: **管理者画面** — `/admin` OTP認証・ペア管理UI

@@ -1,0 +1,402 @@
+package com.gekiyabafx.web;
+
+import com.gekiyabafx.auth.SessionManager;
+import com.gekiyabafx.model.Pair;
+import com.gekiyabafx.storage.StorageManager;
+import io.javalin.Javalin;
+import io.javalin.http.Context;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 管理者向け ペア管理 API エンドポイントを Javalin アプリに登録するルーター。
+ *
+ * <h3>エンドポイント</h3>
+ * <ul>
+ *   <li>{@code GET  /api/admin/pairs}       — 全ペアを一覧する。</li>
+ *   <li>{@code POST /api/admin/pairs}       — 新規ペアを追加する。</li>
+ *   <li>{@code PATCH  /api/admin/pairs/:id} — 既存ペアを部分更新する（有効/無効切り替え等）。</li>
+ *   <li>{@code DELETE /api/admin/pairs/:id} — ペアを削除する（注文・約定履歴ごと）。</li>
+ * </ul>
+ *
+ * <h3>認証</h3>
+ * <p>全エンドポイントで {@code Authorization: Bearer <token>} ヘッダーによる管理者セッション認証を要求する。</p>
+ *
+ * <h3>ペアID の規則</h3>
+ * <p>ペアIDは {@code "BASE/QUOTE"} 形式（例: {@code "DIAMOND/EMERALD"}）の文字列。
+ * URL パスパラメーターとして使う際は {@code %2F} エンコードが必要だが、
+ * このルーターでは Javalin のワイルドカード {@code :id} で受け取り、
+ * クライアント側のエンコードはフロントエンド層の責務とする。</p>
+ */
+public final class AdminApiRouter {
+
+    private final SessionManager adminSessionManager;
+
+    /**
+     * @param adminSessionManager 管理者用 {@link SessionManager}
+     */
+    public AdminApiRouter(SessionManager adminSessionManager) {
+        this.adminSessionManager = adminSessionManager;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  ルート登録
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * {@link Javalin} アプリに管理者ペア管理ルートを登録する。
+     *
+     * @param app {@link Javalin} インスタンス
+     */
+    public void register(Javalin app) {
+        app.get   ("/api/admin/pairs",     this::handleListPairs);
+        app.post  ("/api/admin/pairs",     this::handleCreatePair);
+        app.patch ("/api/admin/pairs/{id}", this::handlePatchPair);
+        app.delete("/api/admin/pairs/{id}", this::handleDeletePair);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  認証ヘルパー
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private boolean requireAdminAuth(Context ctx) {
+        String header = ctx.header("Authorization");
+        if (header == null || !header.startsWith("Bearer ")) {
+            ctx.status(401).json(Map.of("error", "unauthorized"));
+            return false;
+        }
+        String token = header.substring(7).trim();
+        if (adminSessionManager.resolve(token) == null) {
+            ctx.status(401).json(Map.of("error", "unauthorized"));
+            return false;
+        }
+        return true;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  GET /api/admin/pairs
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 全ペアを一覧する。
+     *
+     * <h4>レスポンス（200）</h4>
+     * <pre>{@code
+     * [
+     *   {
+     *     "id":         "DIAMOND/EMERALD",
+     *     "base":       "diamond",
+     *     "quote":      "emerald",
+     *     "enabled":    true,
+     *     "min_amount": "0.0001",
+     *     "min_price":  "0.0001",
+     *     "last_price": "4.3000"
+     *   },
+     *   ...
+     * ]
+     * }</pre>
+     */
+    private void handleListPairs(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            List<Map<String, Object>> list = new ArrayList<>();
+            sm.getData().getPairs().forEach((id, pair) ->
+                    list.add(pairToMap(id, pair)));
+            ctx.json(list);
+        } finally {
+            sm.unlock();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  POST /api/admin/pairs
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 新規ペアを追加する。
+     *
+     * <h4>リクエストボディ</h4>
+     * <pre>{@code
+     * {
+     *   "id":         "DIAMOND/EMERALD",
+     *   "base":       "diamond",
+     *   "quote":      "emerald",
+     *   "enabled":    false,
+     *   "min_amount": "0.0001",
+     *   "min_price":  "0.0001"
+     * }
+     * }</pre>
+     *
+     * <h4>レスポンス（201）</h4>
+     * <pre>{@code { "id": "DIAMOND/EMERALD", "created": true } }</pre>
+     *
+     * <p>同一IDのペアが既に存在する場合は {@code 409 already_exists}。</p>
+     */
+    private void handleCreatePair(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        Map<String, Object> body = parseBody(ctx);
+        if (body == null) return;
+
+        String id = getString(body, "id");
+        if (id == null || id.isBlank()) {
+            ctx.status(400).json(Map.of("error", "missing_id"));
+            return;
+        }
+
+        String base  = getString(body, "base");
+        String quote = getString(body, "quote");
+        if (base == null || base.isBlank() || quote == null || quote.isBlank()) {
+            ctx.status(400).json(Map.of("error", "missing_base_or_quote"));
+            return;
+        }
+
+        BigDecimal minAmount = parseBigDecimal(body, "min_amount", new BigDecimal("0.0001"));
+        BigDecimal minPrice  = parseBigDecimal(body, "min_price",  new BigDecimal("0.0001"));
+        boolean enabled      = getBoolean(body, "enabled", false);
+
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            if (sm.getData().getPairs().containsKey(id)) {
+                ctx.status(409).json(Map.of("error", "already_exists"));
+                return;
+            }
+            Pair pair = new Pair(
+                    base.toLowerCase(),
+                    quote.toLowerCase(),
+                    enabled,
+                    minAmount.setScale(4, RoundingMode.HALF_UP),
+                    minPrice.setScale(4, RoundingMode.HALF_UP)
+            );
+            sm.getData().getPairs().put(id, pair);
+            sm.markDirty();
+
+            ctx.status(201).json(Map.of("id", id, "created", true));
+        } finally {
+            sm.unlock();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  PATCH /api/admin/pairs/:id
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 既存ペアを部分更新する。
+     *
+     * <h4>リクエストボディ（すべてオプション）</h4>
+     * <pre>{@code
+     * {
+     *   "enabled":    true,
+     *   "min_amount": "0.0010",
+     *   "min_price":  "0.0010"
+     * }
+     * }</pre>
+     *
+     * <h4>レスポンス（200）</h4>
+     * <p>更新後のペア情報（{@link #handleListPairs} の1要素と同形式）。</p>
+     *
+     * <p>{@code enabled} を {@code false} にしたとき、未約定の注文は <b>返金のみ</b>（板から除外）。
+     * 返金処理は本メソッド内で同期的に実行する。</p>
+     */
+    private void handlePatchPair(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        String id = ctx.pathParam("id");
+
+        Map<String, Object> body = parseBody(ctx);
+        if (body == null) return;
+
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            Pair pair = sm.getData().getPairs().get(id);
+            if (pair == null) {
+                ctx.status(404).json(Map.of("error", "pair_not_found"));
+                return;
+            }
+
+            boolean wasEnabled = pair.isEnabled();
+
+            // 部分更新
+            if (body.containsKey("enabled")) {
+                pair.setEnabled(getBoolean(body, "enabled", pair.isEnabled()));
+            }
+            if (body.containsKey("min_amount")) {
+                BigDecimal v = parseBigDecimal(body, "min_amount", pair.getMinAmount());
+                pair.setMinAmount(v.setScale(4, RoundingMode.HALF_UP));
+            }
+            if (body.containsKey("min_price")) {
+                BigDecimal v = parseBigDecimal(body, "min_price", pair.getMinPrice());
+                pair.setMinPrice(v.setScale(4, RoundingMode.HALF_UP));
+            }
+
+            // enabled → false になった場合、未約定注文を全返金
+            if (wasEnabled && !pair.isEnabled()) {
+                refundAllOpenOrders(id, pair, sm);
+            }
+
+            sm.markDirty();
+            ctx.json(pairToMap(id, pair));
+        } finally {
+            sm.unlock();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  DELETE /api/admin/pairs/:id
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * ペアを削除する。
+     *
+     * <p>削除前に未約定注文を全返金する。
+     * 注文・約定履歴はペアごと削除される。</p>
+     *
+     * <h4>レスポンス（200）</h4>
+     * <pre>{@code { "id": "DIAMOND/EMERALD", "deleted": true } }</pre>
+     */
+    private void handleDeletePair(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        String id = ctx.pathParam("id");
+
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            Pair pair = sm.getData().getPairs().get(id);
+            if (pair == null) {
+                ctx.status(404).json(Map.of("error", "pair_not_found"));
+                return;
+            }
+
+            // 未約定注文を全返金してから削除
+            refundAllOpenOrders(id, pair, sm);
+            sm.getData().getPairs().remove(id);
+            sm.markDirty();
+
+            ctx.json(Map.of("id", id, "deleted", true));
+        } finally {
+            sm.unlock();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  返金ヘルパー（ロック内で呼ぶこと）
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 板上の全未約定注文を返金する。
+     *
+     * <ul>
+     *   <li>Bid（買い）注文 → ロックされた quote 残高を hot_storage に戻す</li>
+     *   <li>Ask（売り）注文 → ロックされた base 残高を hot_storage に戻す</li>
+     * </ul>
+     *
+     * <p>このメソッドは {@link StorageManager} のロックが取得済みの状態で呼ぶこと。</p>
+     *
+     * @param pairId ペアID（例: {@code "DIAMOND/EMERALD"}）
+     * @param pair   対象ペア
+     * @param sm     {@link StorageManager} インスタンス
+     */
+    private void refundAllOpenOrders(String pairId, Pair pair, StorageManager sm) {
+        String base  = pair.getBase();
+        String quote = pair.getQuote();
+
+        // Bid（買い注文）: ロックされた quote を返金
+        for (com.gekiyabafx.model.Order order : new ArrayList<>(pair.getOrderBook().getBids())) {
+            refundOrder(pairId, order, quote, sm);
+        }
+        // Ask（売り注文）: ロックされた base を返金
+        for (com.gekiyabafx.model.Order order : new ArrayList<>(pair.getOrderBook().getAsks())) {
+            refundOrder(pairId, order, base, sm);
+        }
+
+        // 板をクリア
+        pair.getOrderBook().getBids().clear();
+        pair.getOrderBook().getAsks().clear();
+    }
+
+    /**
+     * 1注文分の残高を返金する。
+     *
+     * @param pairId   ペアID
+     * @param order    返金対象の注文
+     * @param lockItem ロック解除するアイテム名
+     * @param sm       {@link StorageManager}（ロック取得済み）
+     */
+    private void refundOrder(String pairId, com.gekiyabafx.model.Order order,
+                              String lockItem, StorageManager sm) {
+        com.gekiyabafx.model.PlayerData data =
+                sm.getData().getPlayer(order.getUuid());
+        if (data == null) return;
+
+        BigDecimal locked = data.getLockedBalance(pairId, lockItem);
+        if (locked.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal hot = data.getHotBalance(lockItem);
+            data.setHotBalance(lockItem, hot.add(locked));
+            data.setLockedBalance(pairId, lockItem, BigDecimal.ZERO);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  レスポンス変換
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static Map<String, Object> pairToMap(String id, Pair pair) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id",         id);
+        m.put("base",       pair.getBase());
+        m.put("quote",      pair.getQuote());
+        m.put("enabled",    pair.isEnabled());
+        m.put("min_amount", pair.getMinAmount() != null ? pair.getMinAmount().toPlainString() : "0.0001");
+        m.put("min_price",  pair.getMinPrice()  != null ? pair.getMinPrice().toPlainString()  : "0.0001");
+        m.put("last_price", pair.getLastPrice() != null ? pair.getLastPrice().toPlainString() : null);
+        return m;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  パースヘルパー
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseBody(Context ctx) {
+        try {
+            return ctx.bodyAsClass(Map.class);
+        } catch (Exception e) {
+            ctx.status(400).json(Map.of("error", "bad_request"));
+            return null;
+        }
+    }
+
+    private static String getString(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        return v instanceof String s ? s : null;
+    }
+
+    private static boolean getBoolean(Map<String, Object> map, String key, boolean defaultVal) {
+        Object v = map.get(key);
+        if (v instanceof Boolean b) return b;
+        if (v instanceof String s)  return Boolean.parseBoolean(s);
+        return defaultVal;
+    }
+
+    private static BigDecimal parseBigDecimal(Map<String, Object> map, String key, BigDecimal defaultVal) {
+        Object v = map.get(key);
+        if (v == null) return defaultVal;
+        try {
+            return new BigDecimal(v.toString());
+        } catch (NumberFormatException e) {
+            return defaultVal;
+        }
+    }
+}
