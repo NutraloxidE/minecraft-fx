@@ -10,6 +10,8 @@
 import { useState, useEffect } from 'react'
 import { fetchPairs } from '@/lib/api'
 import { usePlayerAuth } from '@/hooks/usePlayerAuth'
+import { useDebugMode } from '@/hooks/useDebugMode'
+import { DEBUG_PAIRS } from '@/lib/debugData'
 import { useMarketData } from '@/hooks/useMarketData'
 import PairSelector from '@/components/PairSelector'
 import OrderBookView from '@/components/OrderBookView'
@@ -20,6 +22,7 @@ import DepositPanel from '@/components/DepositPanel'
 import type { PairSummary, PlaceOrderResponse } from '@/types/api'
 
 export default function TradePage() {
+  const isDebug = useDebugMode()
   const { authState, playerState, error, logout, refresh } = usePlayerAuth()
   const [pairs, setPairs] = useState<PairSummary[]>([])
   const [selectedPairId, setSelectedPairId] = useState<string | null>(null)
@@ -28,6 +31,11 @@ export default function TradePage() {
   // ペア一覧を取得する
   useEffect(() => {
     if (authState !== 'authenticated') return
+    if (isDebug) {
+      setPairs(DEBUG_PAIRS)
+      if (!selectedPairId) setSelectedPairId(DEBUG_PAIRS[0].id)
+      return
+    }
     fetchPairs()
       .then((list) => {
         setPairs(list)
@@ -36,7 +44,7 @@ export default function TradePage() {
         }
       })
       .catch(() => {})
-  }, [authState, selectedPairId])
+  }, [authState, isDebug, selectedPairId])
 
   const selectedPair = pairs.find((p) => p.id === selectedPairId) ?? null
 

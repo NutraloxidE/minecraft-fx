@@ -19,6 +19,7 @@ import { loginPlayer, fetchPlayerState } from '@/lib/api'
 import { getPlayerToken, setPlayerToken, clearPlayerToken } from '@/lib/auth'
 import type { PlayerStateResponse } from '@/types/api'
 import { ApiException } from '@/lib/api'
+import { DEBUG_PLAYER_STATE } from '@/lib/debugData'
 
 export type AuthState = 'loading' | 'authenticated' | 'unauthenticated'
 
@@ -51,7 +52,19 @@ export function usePlayerAuth(): UsePlayerAuthResult {
   }
 
   useEffect(() => {
-    const otp = searchParams.get('otp')
+    const otp   = searchParams.get('otp')
+    const debug = searchParams.get('debug')
+
+    if (debug !== null) {
+      // デバッグモード: トークンがあれば実APIを叩く、なければモックで表示
+      if (getPlayerToken()) {
+        loadState()
+      } else {
+        setPlayerState(DEBUG_PLAYER_STATE)
+        setAuthState('authenticated')
+      }
+      return
+    }
 
     if (otp) {
       // OTP フロー: トークンを取得してから状態をロード

@@ -8,6 +8,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { fetchOrderBook, fetchExecutions } from '@/lib/api'
 import type { OrderBookResponse, Execution } from '@/types/api'
+import { useDebugMode } from '@/hooks/useDebugMode'
+import { makeDebugOrderBook, DEBUG_EXECUTIONS } from '@/lib/debugData'
 
 interface UseMarketDataResult {
   orderBook: OrderBookResponse | null
@@ -19,10 +21,19 @@ export function useMarketData(
   pairId: string | null,
   intervalMs = 2000,
 ): UseMarketDataResult {
+  const isDebug = useDebugMode()
   const [orderBook, setOrderBook] = useState<OrderBookResponse | null>(null)
   const [executions, setExecutions] = useState<Execution[]>([])
   const [loading, setLoading] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // デバッグモード: フェイクデータを即座にセットしてポーリングしない
+  useEffect(() => {
+    if (!isDebug || !pairId) return
+    setOrderBook(makeDebugOrderBook(pairId))
+    setExecutions(DEBUG_EXECUTIONS)
+    setLoading(false)
+  }, [isDebug, pairId])
 
   const fetch_ = useCallback(async () => {
     if (!pairId) return
@@ -41,14 +52,14 @@ export function useMarketData(
   }, [pairId])
 
   useEffect(() => {
-    if (!pairId) return
+    if (isDebug || !pairId) return
     setLoading(true)
     fetch_()
     timerRef.current = setInterval(fetch_, intervalMs)
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [pairId, intervalMs, fetch_])
+  }, [isDebug, pairId, intervalMs, fetch_])
 
   return { orderBook, executions, loading }
 }

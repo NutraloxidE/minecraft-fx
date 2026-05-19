@@ -797,3 +797,69 @@ code {
 
 .admin-loading { font-size: 0.85rem; color: var(--text); padding: 1rem 0; }
 .admin-err-msg { font-size: 0.85rem; color: #e05c5c; }
+
+/* ─── ローソク足チャート ───────────────────────────────────── */
+
+.candle-chart-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.timeframe-selector {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0.45rem 0.6rem;
+  background: var(--code-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.tf-btn {
+  position: relative;
+  padding: 0.22rem 0.6rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  font-family: var(--mono);
+  letter-spacing: 0.03em;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+
+.tf-btn:hover:not(.active) {
+  background: rgba(128, 128, 128, 0.12);
+  color: var(--text-h);
+}
+
+.tf-btn.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+
+.candle-chart-container {
+  position: relative;
+  width: 100%;
+  height: 320px;
+}
+
+.chart-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  color: var(--text);
+  background: var(--code-bg);
+  pointer-events: none;
+}

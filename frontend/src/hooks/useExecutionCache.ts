@@ -9,6 +9,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { fetchExecutions } from '@/lib/api'
 import type { Execution } from '@/types/api'
+import { useDebugMode } from '@/hooks/useDebugMode'
+import { DEBUG_EXECUTIONS } from '@/lib/debugData'
 
 interface UseExecutionCacheResult {
   executions: Execution[]
@@ -19,10 +21,18 @@ export function useExecutionCache(
   pairId: string | null,
   intervalMs = 3000,
 ): UseExecutionCacheResult {
+  const isDebug = useDebugMode()
   const [executions, setExecutions] = useState<Execution[]>([])
   const [loading, setLoading] = useState(false)
   const cacheRef = useRef<Execution[]>([])
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // デバッグモード: フェイク約定を即座にセットしてポーリングしない
+  useEffect(() => {
+    if (!isDebug) return
+    setExecutions(DEBUG_EXECUTIONS)
+    setLoading(false)
+  }, [isDebug])
 
   const doFetch = useCallback(
     async (since?: number) => {
@@ -43,7 +53,7 @@ export function useExecutionCache(
   )
 
   useEffect(() => {
-    if (!pairId) return
+    if (isDebug || !pairId) return
 
     // リセット
     cacheRef.current = []
@@ -62,7 +72,7 @@ export function useExecutionCache(
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [pairId, intervalMs, doFetch])
+  }, [isDebug, pairId, intervalMs, doFetch])
 
   return { executions, loading }
 }
