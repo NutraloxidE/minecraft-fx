@@ -1,6 +1,6 @@
 package com.gekiyabafx.config;
 
-import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.ConfigurationSection;
 
 /**
  * {@code config.yml} の全設定値をメモリ上に保持するイミュータブルなデータクラス。
@@ -13,6 +13,9 @@ import org.bukkit.configuration.file.FileConfiguration;
 public final class PluginConfig {
 
     // ─── Webサーバー ──────────────────────────────────────────────────────────
+
+    /** ログインURLに使用するサーバーのIPアドレスまたはドメイン名。デフォルト: {@code "127.0.0.1"} */
+    private final String serverIp;
 
     /** 内蔵WebサーバーがリッスンするTCPポート番号。デフォルト: {@code 3010} */
     private final int webPort;
@@ -54,6 +57,7 @@ public final class PluginConfig {
     // ─── コンストラクタ（private — ファクトリメソッド経由でのみ生成） ──────────
 
     private PluginConfig(
+            String serverIp,
             int webPort,
             boolean devMode,
             long otpExpireSeconds,
@@ -61,12 +65,32 @@ public final class PluginConfig {
             int executionsMaxPerPair,
             int orderHistoryMaxPerPair
     ) {
+        this.serverIp              = serverIp;
         this.webPort                = webPort;
         this.devMode                = devMode;
         this.otpExpireSeconds       = otpExpireSeconds;
         this.sessionExpireSeconds   = sessionExpireSeconds;
         this.executionsMaxPerPair   = executionsMaxPerPair;
         this.orderHistoryMaxPerPair = orderHistoryMaxPerPair;
+    }
+
+    // ─── テスト用ファクトリ ────────────────────────────────────────────────────
+
+    /**
+     * テスト専用ファクトリ。Paper API に依存せず直接パラメータを指定して生成する。
+     */
+    public static PluginConfig forTest(
+            String serverIp,
+            int webPort,
+            boolean devMode,
+            long otpExpireSeconds,
+            long sessionExpireSeconds,
+            int executionsMaxPerPair,
+            int orderHistoryMaxPerPair
+    ) {
+        return new PluginConfig(serverIp, webPort, devMode,
+                otpExpireSeconds, sessionExpireSeconds,
+                executionsMaxPerPair, orderHistoryMaxPerPair);
     }
 
     // ─── ファクトリメソッド ────────────────────────────────────────────────────
@@ -82,7 +106,13 @@ public final class PluginConfig {
      * @return 設定値を保持する {@link PluginConfig} インスタンス
      * @throws IllegalArgumentException 設定値が不正な場合（ポート範囲外・負数など）
      */
-    public static PluginConfig load(FileConfiguration cfg) {
+    public static PluginConfig load(ConfigurationSection cfg) {
+        String serverIp = cfg.getString("server-ip", "127.0.0.1");
+        if (serverIp == null || serverIp.isBlank()) {
+            throw new IllegalArgumentException(
+                    "config.yml: server-ip が空です。IPアドレスまたはドメイン名を設定してください。");
+        }
+
         int webPort = cfg.getInt("web-port", 3010);
         if (webPort < 1 || webPort > 65535) {
             throw new IllegalArgumentException(
@@ -116,6 +146,7 @@ public final class PluginConfig {
         }
 
         return new PluginConfig(
+                serverIp,
                 webPort,
                 devMode,
                 otpExpireSeconds,
@@ -126,6 +157,11 @@ public final class PluginConfig {
     }
 
     // ─── ゲッター ──────────────────────────────────────────────────────────────
+
+    /** @return ログインURLに使用するサーバーのIPアドレスまたはドメイン名 */
+    public String getServerIp() {
+        return serverIp;
+    }
 
     /** @return 内蔵WebサーバーのTCPポート番号 */
     public int getWebPort() {
@@ -162,7 +198,8 @@ public final class PluginConfig {
     @Override
     public String toString() {
         return "PluginConfig{"
-                + "webPort=" + webPort
+                + "serverIp='" + serverIp + "'"
+                + ", webPort=" + webPort
                 + ", devMode=" + devMode
                 + ", otpExpireSeconds=" + otpExpireSeconds
                 + ", sessionExpireSeconds=" + sessionExpireSeconds

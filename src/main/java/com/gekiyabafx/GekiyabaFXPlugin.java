@@ -1,8 +1,14 @@
 package com.gekiyabafx;
 
+import com.gekiyabafx.auth.OtpManager;
+import com.gekiyabafx.auth.SessionManager;
+import com.gekiyabafx.command.FxCommandExecutor;
 import com.gekiyabafx.config.PluginConfig;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandSender;
+import com.gekiyabafx.listener.PlayerJoinListener;
+import com.gekiyabafx.storage.StorageManager;
+import com.gekiyabafx.web.AuthRouter;
+import com.gekiyabafx.web.PublicApiRouter;
+import com.gekiyabafx.web.WebServer;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
@@ -11,8 +17,10 @@ import org.bukkit.plugin.java.JavaPlugin;
  * <p>責務:</p>
  * <ol>
  *   <li>{@code onEnable()} で {@code config.yml} をロードし {@link PluginConfig} を初期化する。</li>
- *   <li>{@code /fx reload} コマンドで {@code config.yml} の再読み込みを提供する。</li>
- *   <li>Step 6 以降で StorageManager・Javalin の起動/停止をここに追加する。</li>
+ *   <li>{@code StorageManager} を初期化して {@code storage.json} をロードする。</li>
+ *   <li>{@link OtpManager}（プレイヤー用）を生成し {@link FxCommandExecutor} に渡す。</li>
+ *   <li>{@code /fx} コマンドに {@link FxCommandExecutor} を登録する。</li>
+ *   <li>Step 9 以降で PlayerJoinListener・Javalin を追加する。</li>
  * </ol>
  */
 public final class GekiyabaFXPlugin extends JavaPlugin {
@@ -23,6 +31,19 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
     /** 現在有効な設定値。{@code /fx reload} で差し替えられる。 */
     private PluginConfig pluginConfig;
 
+    /** プレイヤー用OTPマネージャー。コマンド実行クラスと認証APIで共有する。 */
+    private OtpManager playerOtpManager;
+    /** 管理者用OTPマネージャー。コマンド実行クラスと認証アピイで共有する。 */
+    private OtpManager adminOtpManager;
+
+    /** プレイヤー用セッションマネージャー。Step 11 の認証エンドポイントから参照する。 */
+    private SessionManager playerSessionManager;
+
+    /** 管理者用セッションマネージャー。Step 11 の認証エンドポイントから参照する。 */
+    private SessionManager adminSessionManager;
+
+    /** 組み込み Web サーバー。Step 11 以降でエンドポイントを追加する。 */
+    private WebServer webServer;
     // ─────────────────────────────────────────────────────────────────────────
     //  静的アクセサ
     // ─────────────────────────────────────────────────────────────────────────
@@ -48,64 +69,69 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
     public void onEnable() {
         instance = this;
 
-        // config.yml をディスクからロード（存在しない場合は jar 内のデフォルトをコピー）
+        // ① config.yml をロードする（存在しない場合は jar 内のデフォルトをコピー）
         loadPluginConfig();
-
         getLogger().info("GekiyabaFX が有効化されました（v" + getDescription().getVersion() + "）。");
         getLogger().info("設定: " + pluginConfig);
 
-        // Step 6 以降: StorageManager 初期化をここに追加する。
-        // Step 7 以降: FxCommandExecutor 登録をここに追加する。
-        // Step 9 以降: PlayerJoinListener 登録をここに追加する。
-        // Step 10 以降: Javalin 起動をここに追加する。
+        // ② StorageManager を初期化する（storage.json のロードを含む）
+        StorageManager.initialize(getDataFolder(), getLogger());
+        getLogger().info("StorageManager を初期化しました: " + StorageManager.getInstance().getData());
+
+        // ④ OtpManager ・ SessionManager を生成する（config の expire 値を使用）
+        playerOtpManager    = new OtpManager(pluginConfig.getOtpExpireSeconds());
+        adminOtpManager     = new OtpManager(pluginConfig.getOtpExpireSeconds());
+        playerSessionManager = new SessionManager(pluginConfig.getSessionExpireSeconds());
+        adminSessionManager  = new SessionManager(pluginConfig.getSessionExpireSeconds());
+
+        // ⑤ /fx コマンドに FxCommandExecutor を登録する
+        FxCommandExecutor executor = new FxCommandExecutor(this, playerOtpManager, adminOtpManager);
+        var cmd = getCommand("fx");
+        if (cmd != null) {
+            cmd.setExecutor(executor);
+        } else {
+            getLogger().severe("plugin.yml に 'fx' コマンドが定義されていません！");
+        }
+
+        // ⑦ PlayerJoinListener を登録する（pending_deposit 回収・pending_withdraw 付与）
+        getServer().getPluginManager().registerEvents(new PlayerJoinListener(this), this);
+
+        // ⑧ Javalin Web サーバーを起動する（静的ファイル配信・SPA フォールバック・CORS）
+        webServer = new WebServer(this);
+        webServer.start();
+
+        // ⑨ 認証エンドポイントを登録する（POST /api/auth ・ POST /api/admin/auth）
+        new AuthRouter(
+                playerOtpManager,
+                adminOtpManager,
+                playerSessionManager,
+                adminSessionManager
+        ).register(webServer.getApp());
+
+        // ⑩ 公開 API エンドポイントを登録する（GET /api/pairs ・ /api/orderbook ・ /api/executions）
+        new PublicApiRouter().register(webServer.getApp());
+        // Step 13 以降: プレイヤー API ・管理者 API エンドポイントをここに追加する。
     }
 
     @Override
     public void onDisable() {
         getLogger().info("GekiyabaFX が無効化されました。");
 
-        // Step 6 以降: StorageManager のフラッシュ（同期書き込み）をここに追加する。
-        // Step 10 以降: Javalin の停止をここに追加する。
+        // Javalin Web サーバーを停止する
+        if (webServer != null) {
+            webServer.stop();
+        }
+
+        // StorageManager をシャットダウンし、未書き込みデータを同期フラッシュする
+        try {
+            StorageManager sm = StorageManager.getInstance();
+            sm.shutdown();
+        } catch (IllegalStateException e) {
+            // onEnable が失敗した場合など、StorageManager が未初期化の可能性がある
+            getLogger().warning("StorageManager のシャットダウンをスキップしました: " + e.getMessage());
+        }
 
         instance = null;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    //  コマンドハンドラ（plugin.yml で登録した "fx" コマンドのルーター）
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * {@code /fx <subcommand>} のエントリポイント。
-     *
-     * <p>各サブコマンドの本実装は Step 7・8 で専用クラスに委譲するが、
-     * {@code reload} サブコマンドはプラグイン本体の責務であるためここで処理する。</p>
-     */
-    @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!command.getName().equalsIgnoreCase("fx")) {
-            return false;
-        }
-
-        if (args.length == 0) {
-            sender.sendMessage("§e[GekiyabaFX] §f使用法: /" + label + " <login|admin|reload>");
-            return true;
-        }
-
-        String sub = args[0].toLowerCase();
-
-        switch (sub) {
-            case "reload" -> handleReload(sender);
-
-            // Step 7 で /fx login の実装クラスに委譲する。
-            case "login" -> sender.sendMessage("§e[GekiyabaFX] §c/fx login は現在未実装です（Step 7 で追加されます）。");
-
-            // Step 8 で /fx admin の実装クラスに委譲する。
-            case "admin" -> sender.sendMessage("§e[GekiyabaFX] §c/fx admin は現在未実装です（Step 8 で追加されます）。");
-
-            default -> sender.sendMessage("§e[GekiyabaFX] §f不明なサブコマンドです: " + sub);
-        }
-
-        return true;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -121,41 +147,24 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
      * @throws IllegalArgumentException {@link PluginConfig#load} が設定値の不正を検出した場合
      */
     private void loadPluginConfig() {
-        // jar 内の config.yml をプラグインデータフォルダへコピー（初回のみ）
         saveDefaultConfig();
-
-        // Bukkit の設定キャッシュを破棄して最新ファイルを読み直す
         reloadConfig();
-
-        // PluginConfig インスタンスを生成（バリデーション込み）
         pluginConfig = PluginConfig.load(getConfig());
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  公開メソッド
+    // ─────────────────────────────────────────────────────────────────────────
+
     /**
-     * {@code /fx reload} サブコマンドの処理。
-     * {@code gekiyabafx.reload} 権限を持つ送信者のみ実行可能。
+     * {@code config.yml} を再読み込みして {@link PluginConfig} を更新する。
+     * {@link FxCommandExecutor} の {@code /fx reload} から呼ばれる。
      *
-     * @param sender コマンド送信者
+     * @throws IllegalArgumentException 設定値が不正な場合
      */
-    private void handleReload(CommandSender sender) {
-        if (!sender.hasPermission("gekiyabafx.reload")) {
-            sender.sendMessage("§c[GekiyabaFX] このコマンドを実行する権限がありません。");
-            return;
-        }
-
-        try {
-            loadPluginConfig();
-            sender.sendMessage("§a[GekiyabaFX] config.yml を再読み込みしました。");
-            getLogger().info("config.yml を再読み込みしました: " + pluginConfig);
-        } catch (IllegalArgumentException e) {
-            sender.sendMessage("§c[GekiyabaFX] config.yml の値が不正です: " + e.getMessage());
-            getLogger().severe("config.yml の再読み込みに失敗しました: " + e.getMessage());
-        }
+    public void reloadPluginConfig() {
+        loadPluginConfig();
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    //  公開ゲッター
-    // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * 現在有効な {@link PluginConfig} を返す。
@@ -164,5 +173,44 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
      */
     public PluginConfig getPluginConfig() {
         return pluginConfig;
+    }
+
+    /**
+     * プレイヤー用 {@link OtpManager} を返す。
+     * Step 11 の認証APIエンドポイントから参照する。
+     *
+     * @return プレイヤー用 {@link OtpManager}
+     */
+    public OtpManager getPlayerOtpManager() {
+        return playerOtpManager;
+    }
+    /**
+     * 管理者用 {@link OtpManager} を返す。
+     * Step 11 の認証アピイエンドポイントから参照する。
+     *
+     * @return 管理者用 {@link OtpManager}
+     */
+    public OtpManager getAdminOtpManager() {
+        return adminOtpManager;
+    }
+
+    /**
+     * プレイヤー用 {@link SessionManager} を返す。
+     * Step 11 の認証アピイエンドポイントから参照する。
+     *
+     * @return プレイヤー用 {@link SessionManager}
+     */
+    public SessionManager getPlayerSessionManager() {
+        return playerSessionManager;
+    }
+
+    /**
+     * 管理者用 {@link SessionManager} を返す。
+     * Step 11 の認証アピイエンドポイントから参照する。
+     *
+     * @return 管理者用 {@link SessionManager}
+     */
+    public SessionManager getAdminSessionManager() {
+        return adminSessionManager;
     }
 }

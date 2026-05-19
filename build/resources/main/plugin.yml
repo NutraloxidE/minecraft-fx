@@ -1,0 +1,37 @@
+name: GekiyabaFX
+version: "1.0.0"
+main: com.gekiyabafx.GekiyabaFXPlugin
+api-version: "1.21"
+description: "Standalone Minecraft Item FX Platform — trade items via browser in real-time."
+authors:
+  - GekiyabaFX Team
+website: ""
+
+# ─── コマンド定義 ─────────────────────────────────────────────────────────────
+commands:
+  fx:
+    description: "GekiyabaFX のメインコマンド。サブコマンドで操作を分岐する。"
+    usage: |
+      /<command> login   — ブラウザログイン用のワンタイムURLを発行する
+      /<command> admin   — 管理者ログイン用のワンタイムURLを発行する（要権限）
+      /<command> reload  — config.yml を再読み込みする（要権限）
+    aliases:
+      - gekiyabafx
+
+# ─── パーミッション定義 ───────────────────────────────────────────────────────
+permissions:
+
+  # プレイヤー向け権限（全員がデフォルトで持つ）
+  gekiyabafx.login:
+    description: "/fx login コマンドの使用権限"
+    default: true
+
+  # 管理者向け権限（op のみデフォルトで持つ）
+  gekiyabafx.admin:
+    description: "/fx admin コマンドおよび管理者APIへのアクセス権限"
+    default: op
+
+  # config リロード権限（op のみ）
+  gekiyabafx.reload:
+    description: "/fx reload コマンドの使用権限"
+    default: op

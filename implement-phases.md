@@ -22,19 +22,19 @@
 ### Phase 2 — コアデータ構造
 - [x] Step 4: **Javaモデルクラス** — `Pair`・`Order`・`PlayerData`・`Execution` をBigDecimalフィールドで定義
 - [x] Step 5: **`storage.json` の読み書き** — GSONカスタムアダプター（BigDecimal→文字列）込みで実装し、起動時ロード・アトミック書き込みを確立（モデルクラスが先に必要）
-- [ ] Step 6: **`StorageManager`** — メモリ上のデータ操作ロジック + `ReentrantLock` + 非同期書き込みキュー + `onDisable()` 同期フラッシュ
+- [x] Step 6: **`StorageManager`** — メモリ上のデータ操作ロジック + `ReentrantLock` + 非同期書き込みキュー + `onDisable()` 同期フラッシュ
 
 ### Phase 3 — ゲーム内コマンド
-- [ ] Step 7: **`/fx login`** — OTP生成・プレイヤーレコード自動作成・チャットへのClickEvent送信
-- [ ] Step 8: **`/fx admin`** — 管理者OTP生成（権限チェック付き）
-- [ ] Step 9: **`PlayerJoinEvent`** — `pending_deposit` 回収・`pending_withdraw` 付与
+- [x] Step 7: **`/fx login`** — OTP生成・プレイヤーレコード自動作成・チャットへのClickEvent送信
+- [x] Step 8: **`/fx admin`** — 管理者OTP生成（権限チェック付き）
+- [x] Step 9: **`PlayerJoinEvent`** — `pending_deposit` 回収・`pending_withdraw` 付与
 
 ### Phase 4 — Web API
-- [ ] Step 10: **Javalin起動** — 静的ファイル配信 + SPAフォールバック + CORS設定
-- [ ] Step 11: **認証エンドポイント** — `POST /api/auth`・`POST /api/admin/auth`（OTP→セッショントークン交換）
-- [ ] Step 12: **公開API** — `GET /api/pairs`・`GET /api/orderbook`・`GET /api/executions`
-- [ ] Step 13: **マッチングエンジンロジック（コア）** — Price-Time Priority・指値/成行・部分約定・残高ロック/返還をクラス単体で実装
-- [ ] Step 14: **マッチングエンジン単体テスト** — 指値/成行・部分約定・残高ロック/返還の検証をこの時点で実施（最後まで待たない）
+- [x] Step 10: **Javalin起動** — 静的ファイル配信 + SPAフォールバック + CORS設定
+- [x] Step 11: **認証エンドポイント** — `POST /api/auth`・`POST /api/admin/auth`（OTP→セッショントークン交換）
+- [x] Step 12: **公開API** — `GET /api/pairs`・`GET /api/orderbook`・`GET /api/executions`
+- [x] Step 13: **マッチングエンジンロジック（コア）** — Price-Time Priority・指値/成行・部分約定・残高ロック/返還をクラス単体で実装
+- [x] Step 14: **マッチングエンジン単体テスト** — 指値/成行・部分約定・残高ロック/返還の検証をこの時点で実施（最後まで待たない）
 - [ ] Step 15: **プレイヤーAPI** — `GET /api/state`・`POST /api/order`（マッチングエンジンのAPIエンドポイント接続）・`DELETE /api/order`
 - [ ] Step 16: **入出金API** — `POST /api/deposit`・`POST /api/withdraw`（BukkitScheduler同期処理）
 - [ ] Step 17: **管理者API** — `GET|POST /api/admin/pairs`・`PATCH|DELETE /api/admin/pairs/:id`

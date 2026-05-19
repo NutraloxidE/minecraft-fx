@@ -17,13 +17,16 @@ java {
 repositories {
     mavenCentral()
 
-    // Paper MC公式リポジトリ
+    // Paper MC 公式リポジトリ（旧）
     maven("https://repo.papermc.io/repository/maven-public/")
+
+    // Paper MC Artifactory（新バージョンを2公開中）
+    maven("https://artifactory.papermc.io/artifactory/universe")
 }
 
 dependencies {
     // ─── Paper API (サーバー側で提供されるため compileOnly) ───────────────────────
-    compileOnly("io.papermc.paper:paper-api:26.1.2-R0.1-SNAPSHOT")
+    compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
 
     // ─── Javalin 6（内蔵Webサーバー）─────────────────────────────────────────────
     // Javalin本体（JettyおよびSLF4Jを推移的に含む）
@@ -34,6 +37,14 @@ dependencies {
 
     // ─── GSON（BigDecimalカスタムアダプター込みのJSONシリアライズ）─────────────────
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // ─── テスト（JUnit 5）────────────────────────────────────────────────────────
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.3")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 tasks.withType<JavaCompile> {

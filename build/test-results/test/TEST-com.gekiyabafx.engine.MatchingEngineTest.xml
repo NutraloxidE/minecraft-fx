@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.gekiyabafx.engine.MatchingEngineTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-05-19T19:33:10" hostname="ENDER" time="0.133">
+  <properties/>
+  <testcase name="buy(3) &gt; sell(1) → 部分約定、bid が PARTIALLY_FILLED で残る" classname="com.gekiyabafx.engine.MatchingEngineTest" time="0.061"/>
+  <testcase name="成行 BUY — maxSpend で板を部分消費し、未使用 quote がホットへ返還される" classname="com.gekiyabafx.engine.MatchingEngineTest" time="0.004"/>
+  <testcase name="buy(1) &lt; sell(3) → 部分約定、ask が PARTIALLY_FILLED で残る" classname="com.gekiyabafx.engine.MatchingEngineTest" time="0.003"/>
+  <testcase name="指値 BUY キャンセル → locked_quote がホットへ戻る" classname="com.gekiyabafx.engine.MatchingEngineTest" time="0.003"/>
+  <testcase name="指値 BUY と指値 SELL が完全約定する" classname="com.gekiyabafx.engine.MatchingEngineTest" time="0.005"/>
+  <testcase name="quote 不足の BUY → InsufficientBalanceException" classname="com.gekiyabafx.engine.MatchingEngineTest" time="0.02"/>
+  <testcase name="同価格の asks は時刻昇順で先着が先に約定する" classname="com.gekiyabafx.engine.MatchingEngineTest" time="0.005"/>
+  <testcase name="成行 BUY — maxSpend ちょうどで全量約定、ロック残 0" classname="com.gekiyabafx.engine.MatchingEngineTest" time="0.003"/>
+  <testcase name="成行 SELL — 全量約定" classname="com.gekiyabafx.engine.MatchingEngineTest" time="0.002"/>
+  <testcase name="buy.price &lt; ask.price → 約定しない、両方板に残る" classname="com.gekiyabafx.engine.MatchingEngineTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
