@@ -101,16 +101,21 @@ export const fetchPairs = (): Promise<PairSummary[]> =>
 
 /** 指定ペアのオーダーブック（板）を取得する */
 export const fetchOrderBook = (pairId: string): Promise<OrderBookResponse> =>
-  request('GET', `/api/orderbook?pair_id=${encodeURIComponent(pairId)}`, null)
+  request('GET', `/api/orderbook?pair=${encodeURIComponent(pairId)}`, null)
 
 /** 指定ペアの約定履歴を取得する */
-export const fetchExecutions = (
+export const fetchExecutions = async (
   pairId: string,
   since?: number,
 ): Promise<Execution[]> => {
-  const params = new URLSearchParams({ pair_id: pairId })
+  const params = new URLSearchParams({ pair: pairId })
   if (since !== undefined) params.set('since', String(since))
-  return request('GET', `/api/executions?${params}`, null)
+  const res = await request<{ pair: string; executions: Execution[] }>(
+    'GET',
+    `/api/executions?${params}`,
+    null,
+  )
+  return res.executions ?? []
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

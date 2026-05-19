@@ -1,4 +1,7 @@
-> Task :compileJava UP-TO-DATE
 
-BUILD SUCCESSFUL in 2s
-1 actionable task: 1 up-to-date
+> Task :compileJava
+ノート: C:\git\minecraft-fx\src\main\java\com\gekiyabafx\GekiyabaFXPlugin.javaは推奨されないAPIを使用またはオーバーライドしています。
+ノート: 詳細は、-Xlint:deprecationオプションを指定して再コンパイルしてください。
+
+BUILD SUCCESSFUL in 5s
+1 actionable task: 1 executed

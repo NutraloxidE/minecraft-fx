@@ -56,6 +56,7 @@ export function aggregateCandles(
 
 /** 利用可能な時間足の定義 */
 export const TIMEFRAMES = [
+  { label: '20秒', sec: 20        },
   { label: '1分',  sec: 60        },
   { label: '5分',  sec: 300       },
   { label: '15分', sec: 900       },

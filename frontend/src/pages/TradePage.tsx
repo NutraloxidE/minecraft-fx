@@ -130,7 +130,7 @@ export default function TradePage() {
           </div>
 
           {/* 入出金 */}
-          <DepositPanel playerState={playerState} onDone={refresh} />
+          <DepositPanel playerState={playerState} pair={selectedPair} onDone={refresh} />
         </section>
       </main>
 

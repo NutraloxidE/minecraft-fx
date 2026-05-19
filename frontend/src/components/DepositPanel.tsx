@@ -8,14 +8,15 @@
 
 import { useState } from 'react'
 import { deposit, withdraw } from '@/lib/api'
-import type { PlayerStateResponse } from '@/types/api'
+import type { PlayerStateResponse, PairSummary } from '@/types/api'
 
 interface Props {
   playerState: PlayerStateResponse | null
+  pair: PairSummary | null
   onDone: () => void
 }
 
-export default function DepositPanel({ playerState, onDone }: Props) {
+export default function DepositPanel({ playerState, pair, onDone }: Props) {
   const [item, setItem]       = useState('')
   const [amount, setAmount]   = useState('')
   const [msg, setMsg]         = useState<{ text: string; ok: boolean } | null>(null)
@@ -76,6 +77,21 @@ export default function DepositPanel({ playerState, onDone }: Props) {
 
       {/* 入力フォーム */}
       <div className="deposit-form">
+        {pair && (
+          <div className="deposit-item-chips">
+            {[pair.base, pair.quote].map((itm) => (
+              <button
+                key={itm}
+                className={`deposit-chip${item === itm ? ' active' : ''}`}
+                onClick={() => setItem(itm)}
+                disabled={busy}
+                type="button"
+              >
+                {itm}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="deposit-row">
           <input
             className="deposit-input"
