@@ -15,13 +15,13 @@
 ## 推奨実装順序
 
 ### Phase 1 — Javaプロジェクト基盤
-- [ ] Step 1: **Maven/Gradleプロジェクト作成** — Paper API・Javalin・GSONを依存関係に追加
-- [ ] Step 2: **`plugin.yml` の作成** — プラグイン名・バージョン・mainクラス・コマンド・パーミッションを定義。このファイルがないとPaperサーバがプラグインの読み込みを拒否する
-- [ ] Step 3: **`config.yml` のロード** — `onEnable()` で読み込み、全設定値をメモリに保持
+- [x] Step 1: **Maven/Gradleプロジェクト作成** — Paper API・Javalin・GSONを依存関係に追加
+- [x] Step 2: **`plugin.yml` の作成** — プラグイン名・バージョン・mainクラス・コマンド・パーミッションを定義。このファイルがないとPaperサーバがプラグインの読み込みを拒否する
+- [x] Step 3: **`config.yml` のロード** — `onEnable()` で読み込み、全設定値をメモリに保持
 
 ### Phase 2 — コアデータ構造
-- [ ] Step 4: **Javaモデルクラス** — `Pair`・`Order`・`PlayerData`・`Execution` をBigDecimalフィールドで定義
-- [ ] Step 5: **`storage.json` の読み書き** — GSONカスタムアダプター（BigDecimal→文字列）込みで実装し、起動時ロード・アトミック書き込みを確立（モデルクラスが先に必要）
+- [x] Step 4: **Javaモデルクラス** — `Pair`・`Order`・`PlayerData`・`Execution` をBigDecimalフィールドで定義
+- [x] Step 5: **`storage.json` の読み書き** — GSONカスタムアダプター（BigDecimal→文字列）込みで実装し、起動時ロード・アトミック書き込みを確立（モデルクラスが先に必要）
 - [ ] Step 6: **`StorageManager`** — メモリ上のデータ操作ロジック + `ReentrantLock` + 非同期書き込みキュー + `onDisable()` 同期フラッシュ
 
 ### Phase 3 — ゲーム内コマンド
