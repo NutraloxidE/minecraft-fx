@@ -33,7 +33,7 @@ export default function CandleChart({ pairId, contextMenuItems = [] }: Props) {
     open: number; high: number; low: number; close: number
   } | null>(null)
   const candleDataRef = useRef<CandlestickData<Time>[]>([])
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: number | null; closePrice: number | null } | null>(null)
 
   const { executions, loading } = useExecutionCache(pairId)
 
@@ -128,7 +128,19 @@ export default function CandleChart({ pairId, contextMenuItems = [] }: Props) {
   return (
     <div
       className="candle-chart-wrap"
-      onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }) }}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        const chart = chartRef.current
+        let price: number | null = null
+        if (chart && containerRef.current && seriesRef.current) {
+          const rect = containerRef.current.getBoundingClientRect()
+          const y = e.clientY - rect.top
+          try { price = seriesRef.current.coordinateToPrice(y) } catch { price = null }
+        }
+        const closePrice = hoveredCandle?.close
+          ?? (candleDataRef.current.at(-1)?.close ?? null)
+        setContextMenu({ x: e.clientX, y: e.clientY, price, closePrice })
+      }}
       onClick={() => setContextMenu(null)}
     >
       {/* コンテキストメニュー */}
@@ -138,21 +150,36 @@ export default function CandleChart({ pairId, contextMenuItems = [] }: Props) {
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onContextMenu={(e) => e.preventDefault()}
         >
-          {contextMenuItems.length === 0 ? (
-            <li className="chart-context-item chart-context-empty">(メニューなし)</li>
-          ) : (
-            contextMenuItems.map((item, i) => (
-              <li key={i} className={`chart-context-item${item.disabled ? ' disabled' : ''}`}>
-                <button
-                  type="button"
-                  disabled={item.disabled}
-                  onClick={() => { item.onClick(); setContextMenu(null) }}
-                >
-                  {item.label}
-                </button>
-              </li>
-            ))
-          )}
+          {/* ビルトインアイテム */}
+          <li className="chart-context-item">
+            <button type="button" onClick={() => {
+              if (contextMenu.price != null) navigator.clipboard.writeText(contextMenu.price.toFixed(4))
+              setContextMenu(null)
+            }}>
+              この価格をコピー{contextMenu.price != null ? ` (${contextMenu.price.toFixed(4)})` : ''}
+            </button>
+          </li>
+          <li className="chart-context-item">
+            <button type="button" disabled={contextMenu.closePrice == null} onClick={() => {
+              if (contextMenu.closePrice != null) navigator.clipboard.writeText(contextMenu.closePrice.toFixed(4))
+              setContextMenu(null)
+            }}>
+              {hoveredCandle ? 'この終値をコピー' : '最新の終値をコピー'}{contextMenu.closePrice != null ? ` (${contextMenu.closePrice.toFixed(4)})` : ''}
+            </button>
+          </li>
+          {/* カスタムアイテム */}
+          {contextMenuItems.length > 0 && <li className="chart-context-separator" />}
+          {contextMenuItems.map((item, i) => (
+            <li key={i} className={`chart-context-item${item.disabled ? ' disabled' : ''}`}>
+              <button
+                type="button"
+                disabled={item.disabled}
+                onClick={() => { item.onClick(); setContextMenu(null) }}
+              >
+                {item.label}
+              </button>
+            </li>
+          ))}
         </ul>
       )}
       {/* ホバー中ローソク情報 */}
