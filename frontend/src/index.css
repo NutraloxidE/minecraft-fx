@@ -877,6 +877,48 @@ code {
 
 /* ─── ローソク足チャート ───────────────────────────────────── */
 
+/* OHLC情報バー */
+.candle-ohlc-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.1rem 1rem;
+  padding: 0.35rem 0.8rem;
+  background: var(--code-bg);
+  border-bottom: 1px solid var(--border);
+  min-height: 2rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+.ohlc-placeholder {
+  color: var(--text);
+  opacity: 0.4;
+  font-size: 0.76rem;
+}
+
+.ohlc-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3em;
+}
+
+.ohlc-label {
+  color: var(--text);
+  opacity: 0.55;
+  font-size: 0.72rem;
+}
+
+.ohlc-value {
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.ohlc-high  { color: #4caf82; }
+.ohlc-low   { color: #e05c5c; }
+.ohlc-up    { color: #4caf82; }
+.ohlc-down  { color: #e05c5c; }
+
 .candle-chart-wrap {
   display: flex;
   flex-direction: column;

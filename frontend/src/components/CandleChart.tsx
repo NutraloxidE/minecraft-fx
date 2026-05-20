@@ -22,6 +22,10 @@ export default function CandleChart({ pairId }: Props) {
   const chartRef     = useRef<IChartApi | null>(null)
   const seriesRef    = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const [tfSec, setTfSec] = useState(60) // デフォルト: 1分足
+  const [hoveredCandle, setHoveredCandle] = useState<{
+    open: number; high: number; low: number; close: number
+  } | null>(null)
+  const candleDataRef = useRef<CandlestickData<Time>[]>([])
 
   const { executions, loading } = useExecutionCache(pairId)
 
@@ -58,6 +62,21 @@ export default function CandleChart({ pairId }: Props) {
     chartRef.current  = chart
     seriesRef.current = series
 
+    // クロスヘア移動時にローソク情報を更新
+    chart.subscribeCrosshairMove((param) => {
+      if (!param.time || !seriesRef.current) {
+        setHoveredCandle(null)
+        return
+      }
+      const data = candleDataRef.current
+      const candle = data.find((d) => d.time === param.time)
+      if (candle) {
+        setHoveredCandle({ open: candle.open, high: candle.high, low: candle.low, close: candle.close })
+      } else {
+        setHoveredCandle(null)
+      }
+    })
+
     // リサイズ対応
     const observer = new ResizeObserver(() => {
       if (containerRef.current) {
@@ -86,13 +105,36 @@ export default function CandleChart({ pairId }: Props) {
       close: c.close,
     }))
     seriesRef.current.setData(data)
+    candleDataRef.current = data
     if (data.length > 0) {
       chartRef.current?.timeScale().fitContent()
     }
   }, [executions, tfSec])
 
+  const changeRate = hoveredCandle
+    ? ((hoveredCandle.close - hoveredCandle.open) / hoveredCandle.open) * 100
+    : null
+  const spread = hoveredCandle ? hoveredCandle.high - hoveredCandle.low : null
+  const isUp = hoveredCandle ? hoveredCandle.close >= hoveredCandle.open : true
+
   return (
     <div className="candle-chart-wrap">
+      {/* ホバー中ローソク情報 */}
+      <div className="candle-ohlc-bar">
+        {hoveredCandle ? (
+          <>
+            <span className="ohlc-item"><span className="ohlc-label">始値</span><span className="ohlc-value">{hoveredCandle.open.toFixed(2)}</span></span>
+            <span className="ohlc-item"><span className="ohlc-label">高値</span><span className="ohlc-value ohlc-high">{hoveredCandle.high.toFixed(2)}</span></span>
+            <span className="ohlc-item"><span className="ohlc-label">安値</span><span className="ohlc-value ohlc-low">{hoveredCandle.low.toFixed(2)}</span></span>
+            <span className="ohlc-item"><span className="ohlc-label">終値</span><span className="ohlc-value">{hoveredCandle.close.toFixed(2)}</span></span>
+            <span className="ohlc-item"><span className="ohlc-label">変動率</span><span className={`ohlc-value ${isUp ? 'ohlc-up' : 'ohlc-down'}`}>{changeRate! >= 0 ? '+' : ''}{changeRate!.toFixed(2)}%</span></span>
+            <span className="ohlc-item"><span className="ohlc-label">幅</span><span className="ohlc-value">{spread!.toFixed(2)}</span></span>
+          </>
+        ) : (
+          <span className="ohlc-placeholder">ローソクにマウスを合わせると詳細が表示されます</span>
+        )}
+      </div>
+
       {/* 時間足セレクター */}
       <div className="timeframe-selector">
         {TIMEFRAMES.map((tf) => (
