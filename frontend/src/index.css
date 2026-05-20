@@ -223,44 +223,121 @@ code {
 
 .pair-selector {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  padding: 0.6rem 1rem;
+  align-items: center;
+  padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
 }
 
-.pair-btn {
+/* カスタムドロップダウン全体 */
+.pair-dropdown {
+  position: relative;
+}
+
+/* トリガーボタン */
+.pair-dropdown-trigger {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  padding: 0.3rem 0.8rem;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.35rem 0.65rem 0.35rem 0.85rem;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
+  background: var(--code-bg);
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s;
+  min-width: 170px;
+}
+
+.pair-dropdown-trigger:hover {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.pair-dropdown-trigger.open {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.pair-dropdown-label {
+  flex: 1;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-h);
+  text-align: left;
+  letter-spacing: 0.02em;
+}
+
+.pair-dropdown-price {
+  font-size: 0.78rem;
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.pair-dropdown-arrow {
+  fill: var(--text);
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.pair-dropdown-trigger.open .pair-dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+/* ドロップダウンメニュー */
+.pair-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.10);
+  overflow: hidden;
+  z-index: 100;
+  animation: dropdown-in 0.1s ease;
+}
+
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.pair-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.45rem 0.85rem;
+  border: none;
   background: transparent;
   cursor: pointer;
-  gap: 0.1rem;
-  min-width: 110px;
+  gap: 0.75rem;
+  transition: background 0.1s;
 }
 
-.pair-btn:hover {
-  border-color: var(--accent-border);
+.pair-dropdown-item:hover {
   background: var(--accent-bg);
 }
 
-.pair-btn.active {
-  border-color: var(--accent);
+.pair-dropdown-item.active {
   background: var(--accent-bg);
 }
 
-.pair-btn-id {
-  font-size: 0.8rem;
-  font-weight: 600;
+.pair-dropdown-item.active .pair-dropdown-item-id {
+  color: var(--accent);
+}
+
+.pair-dropdown-item-id {
+  font-size: 0.85rem;
+  font-weight: 700;
   color: var(--text-h);
+  letter-spacing: 0.02em;
 }
 
-.pair-btn-price {
-  font-size: 0.75rem;
+.pair-dropdown-item-price {
+  font-size: 0.78rem;
+  font-family: var(--mono);
   color: var(--text);
 }
 
