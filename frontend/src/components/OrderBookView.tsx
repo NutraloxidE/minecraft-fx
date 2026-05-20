@@ -28,6 +28,29 @@ export default function OrderBookView({ orderBook, pairId }: Props) {
     parseFloat(b.price ?? '0') - parseFloat(a.price ?? '0'),
   )
 
+  // 累計（上から積み上げ）を計算
+  const asksWithCumul = asks.slice(0, 20).reduce<{ order_id: string; price: string; remaining: number; cumul: number }[]>((acc, o) => {
+    const remaining = parseFloat(o.amount) - parseFloat(o.filled)
+    const prev = acc.length > 0 ? acc[acc.length - 1].cumul : 0
+    acc.push({ order_id: o.order_id, price: o.price ?? '0', remaining, cumul: prev + remaining })
+    return acc
+  }, [])
+
+  const bidsWithCumul = bids.slice(0, 20).reduce<{ order_id: string; price: string; remaining: number; cumul: number }[]>((acc, o) => {
+    const remaining = parseFloat(o.amount) - parseFloat(o.filled)
+    const prev = acc.length > 0 ? acc[acc.length - 1].cumul : 0
+    acc.push({ order_id: o.order_id, price: o.price ?? '0', remaining, cumul: prev + remaining })
+    return acc
+  }, [])
+
+  // スプレッド計算
+  const bestAsk = asks.length > 0 ? parseFloat(asks[asks.length - 1].price ?? '0') : null
+  const bestBid = bids.length > 0 ? parseFloat(bids[0].price ?? '0') : null
+  const spread = bestAsk !== null && bestBid !== null ? bestAsk - bestBid : null
+  const spreadPct = spread !== null && bestAsk !== null && bestAsk > 0
+    ? (spread / bestAsk * 100).toFixed(2)
+    : null
+
   const [, quote] = pairId.split('/')
 
   return (
@@ -40,18 +63,13 @@ export default function OrderBookView({ orderBook, pairId }: Props) {
 
       {/* Asks（売り） */}
       <div className="orderbook-asks">
-        {asks.slice(0, 20).map((o) => {
-          const price = parseFloat(o.price ?? '0')
-          const remaining = parseFloat(o.amount) - parseFloat(o.filled)
-          return (
-            <div key={o.order_id} className="orderbook-row ask">
-              <span className="ob-price">{o.price}</span>
-              <span className="ob-amount">{remaining.toFixed(4)}</span>
-              <span className="ob-filled">{o.filled}</span>
-            </div>
-          )
-          void price
-        })}
+        {asksWithCumul.map((o) => (
+          <div key={o.order_id} className="orderbook-row ask">
+            <span className="ob-price">{o.price}</span>
+            <span className="ob-amount">{o.remaining.toFixed(4)}</span>
+            <span className="ob-filled">{o.cumul.toFixed(4)}</span>
+          </div>
+        ))}
         {asks.length === 0 && (
           <div className="orderbook-row-empty">売り注文なし</div>
         )}
@@ -59,21 +77,21 @@ export default function OrderBookView({ orderBook, pairId }: Props) {
 
       {/* スプレッド */}
       <div className="orderbook-spread">
-        ── スプレッド ──
+        {spread !== null
+          ? <><span className="ob-spread-value">{spread.toFixed(4)}</span><span className="ob-spread-pct">({spreadPct}%)</span></>
+          : '── スプレッド ──'
+        }
       </div>
 
       {/* Bids（買い） */}
       <div className="orderbook-bids">
-        {bids.slice(0, 20).map((o) => {
-          const remaining = parseFloat(o.amount) - parseFloat(o.filled)
-          return (
-            <div key={o.order_id} className="orderbook-row bid">
-              <span className="ob-price">{o.price}</span>
-              <span className="ob-amount">{remaining.toFixed(4)}</span>
-              <span className="ob-filled">{o.filled}</span>
-            </div>
-          )
-        })}
+        {bidsWithCumul.map((o) => (
+          <div key={o.order_id} className="orderbook-row bid">
+            <span className="ob-price">{o.price}</span>
+            <span className="ob-amount">{o.remaining.toFixed(4)}</span>
+            <span className="ob-filled">{o.cumul.toFixed(4)}</span>
+          </div>
+        ))}
         {bids.length === 0 && (
           <div className="orderbook-row-empty">買い注文なし</div>
         )}

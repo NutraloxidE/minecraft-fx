@@ -386,6 +386,21 @@ code {
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 92%, var(--border));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  font-family: var(--mono);
+}
+
+.ob-spread-value {
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.ob-spread-pct {
+  opacity: 0.55;
+  font-size: 0.68rem;
 }
 
 .orderbook-row-empty {
