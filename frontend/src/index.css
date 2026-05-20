@@ -425,6 +425,17 @@ code {
   min-height: 260px;
 }
 
+@keyframes order-col-flash-buy {
+  0%   { background: transparent; }
+  30%  { background: rgba(76, 175, 130, 0.18); }
+  100% { background: transparent; }
+}
+@keyframes order-col-flash-sell {
+  0%   { background: transparent; }
+  30%  { background: rgba(224, 92, 92, 0.18); }
+  100% { background: transparent; }
+}
+
 .order-col {
   flex: 1;
   display: flex;
@@ -433,6 +444,8 @@ code {
   padding: 0 0.75rem 0.75rem;
   border-right: 1px solid var(--border);
 }
+.order-col.buy-col.order-col-flash  { animation: order-col-flash-buy  0.6s ease-out; }
+.order-col.sell-col.order-col-flash { animation: order-col-flash-sell 0.6s ease-out; }
 .order-col:last-child {
   border-right: none;
 }

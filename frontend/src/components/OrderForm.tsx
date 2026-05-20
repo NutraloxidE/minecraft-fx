@@ -38,6 +38,7 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
   const [pct, setPct] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [flashing, setFlashing] = useState(false)
 
   // ペアが切り替わったら価格・数量をリセット
   useEffect(() => {
@@ -54,6 +55,9 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
     setType('LIMIT')
     setPrice(externalPrice.price)
     setPct(0)
+    setFlashing(true)
+    const t = setTimeout(() => setFlashing(false), 600)
+    return () => clearTimeout(t)
   }, [externalPrice?.key])
 
   const isBuy = side === 'BUY'
@@ -175,7 +179,7 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
   })()
 
   return (
-    <form className={`order-col${isBuy ? ' buy-col' : ' sell-col'}`} onSubmit={handleSubmit}>
+    <form className={`order-col${isBuy ? ' buy-col' : ' sell-col'}${flashing ? ' order-col-flash' : ''}`} onSubmit={handleSubmit}>
       {/* 列ヘッダー */}
       <div className={`order-col-header${isBuy ? ' buy' : ' sell'}`}>
         {isBuy ? `買い (${base})` : `売り (${base})`}
