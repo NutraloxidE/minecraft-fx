@@ -61,6 +61,27 @@ export default function OrderForm({ pair, onOrderPlaced }: Props) {
 
   const [base, quote] = pair.id.split('/')
 
+  // ロック計算
+  const lockInfo = (() => {
+    if (side === 'BUY') {
+      if (type === 'LIMIT') {
+        const p = parseFloat(price)
+        const a = parseFloat(amount)
+        if (!isNaN(p) && p > 0 && !isNaN(a) && a > 0)
+          return { item: quote, amount: (p * a).toFixed(4) }
+      } else {
+        const s = parseFloat(maxSpend)
+        if (!isNaN(s) && s > 0)
+          return { item: quote, amount: s.toFixed(4) }
+      }
+    } else {
+      const a = parseFloat(amount)
+      if (!isNaN(a) && a > 0)
+        return { item: base, amount: a.toFixed(4) }
+    }
+    return null
+  })()
+
   return (
     <form className="order-form" onSubmit={handleSubmit}>
       {/* Side タブ */}
@@ -147,7 +168,14 @@ export default function OrderForm({ pair, onOrderPlaced }: Props) {
         className={`order-submit${side === 'BUY' ? ' buy' : ' sell'}`}
         disabled={submitting}
       >
-        {submitting ? '発注中...' : side === 'BUY' ? '買い注文' : '売り注文'}
+        <span className="order-submit-label">
+          {submitting ? '発注中...' : side === 'BUY' ? '買い注文' : '売り注文'}
+        </span>
+        {!submitting && lockInfo && (
+          <span className="order-submit-lock">
+            🔒 {lockInfo.item} {lockInfo.amount}
+          </span>
+        )}
       </button>
     </form>
   )

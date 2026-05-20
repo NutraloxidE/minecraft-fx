@@ -143,17 +143,18 @@ public final class PlayerJoinListener implements Listener {
                 // 全量回収完了 → エントリを削除
                 it.remove();
             } else {
-                // 一部しか取り出せなかった → 残量を更新して次回ログイン時に再試行
-                entry.setValue(notRemoved);
+                // インベントリ不足で一部（または全部）取り出せなかった → キャンセル（エントリを削除）
+                it.remove();
                 player.sendMessage(Component.text()
                         .append(Component.text("[GekiyabaFX] ", NamedTextColor.GOLD))
-                        .append(Component.text("デポジット保留: ", NamedTextColor.YELLOW))
+                        .append(Component.text("デポジットキャンセル: ", NamedTextColor.RED))
                         .append(Component.text(notRemoved + "x ", NamedTextColor.WHITE))
                         .append(Component.text(itemName, NamedTextColor.YELLOW))
                         .append(Component.text(
-                                " がインベントリに見つかりません。次回ログイン時に再試行します。",
-                                NamedTextColor.YELLOW))
+                                " がインベントリに不足しているため、デポジット保留をキャンセルしました。",
+                                NamedTextColor.RED))
                         .build());
+                changed = true;
             }
         }
 
