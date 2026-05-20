@@ -145,7 +145,6 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
       }
       const res = await placeOrder(req)
       onOrderPlaced(res)
-      setPrice('')
       setAmount('')
       setMaxSpend('')
       setPct(0)
