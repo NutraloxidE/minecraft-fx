@@ -5,6 +5,8 @@ import com.gekiyabafx.auth.SessionManager;
 import com.gekiyabafx.command.FxCommandExecutor;
 import com.gekiyabafx.config.PluginConfig;
 import com.gekiyabafx.listener.PlayerJoinListener;
+import com.gekiyabafx.storage.ExecutionRepository;
+import com.gekiyabafx.storage.H2ExecutionRepository;
 import com.gekiyabafx.storage.StorageManager;
 import com.gekiyabafx.web.AuthRouter;
 import com.gekiyabafx.web.AdminApiRouter;
@@ -47,6 +49,9 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
     /** 組み込み Web サーバー。Step 11 以降でエンドポイントを追加する。 */
     private WebServer webServer;
+
+    /** 約定履歴を H2 に永続化するリポジトリ。 */
+    private ExecutionRepository executionRepo;
     // ─────────────────────────────────────────────────────────────────────────
     //  静的アクセサ
     // ─────────────────────────────────────────────────────────────────────────
@@ -81,6 +86,16 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
         StorageManager.initialize(getDataFolder(), getLogger());
         getLogger().info("StorageManager を初期化しました: " + StorageManager.getInstance().getData());
 
+        // ③ H2ExecutionRepository を初期化する
+        String dbPath = getDataFolder().getAbsolutePath() + "/executions";
+        try {
+            executionRepo = new H2ExecutionRepository(dbPath, getLogger());
+        } catch (java.sql.SQLException e) {
+            getLogger().severe("H2ExecutionRepository の初期化に失敗しました: " + e.getMessage());
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
         // ④ OtpManager ・ SessionManager を生成する（config の expire 値を使用）
         playerOtpManager    = new OtpManager(pluginConfig.getOtpExpireSeconds());
         adminOtpManager     = new OtpManager(pluginConfig.getOtpExpireSeconds());
@@ -112,11 +127,11 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
         ).register(webServer.getApp());
 
         // ⑩ 公開 API エンドポイントを登録する（GET /api/pairs ・ /api/orderbook ・ /api/executions）
-        new PublicApiRouter().register(webServer.getApp());
+        new PublicApiRouter(executionRepo).register(webServer.getApp());
 
         // ② プレイヤー API エンドポイントを登録する
         //    GET /api/state ・ POST /api/order ・ DELETE /api/order/:id
-        new PlayerApiRouter(playerSessionManager, pluginConfig).register(webServer.getApp());
+        new PlayerApiRouter(playerSessionManager, pluginConfig, executionRepo).register(webServer.getApp());
 
         // ⑯ 入出金 API エンドポイントを登録する
         //    POST /api/deposit ・ POST /api/withdraw
@@ -134,6 +149,11 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
         // Javalin Web サーバーを停止する
         if (webServer != null) {
             webServer.stop();
+        }
+
+        // H2ExecutionRepository の接続を閉じる
+        if (executionRepo != null) {
+            executionRepo.close();
         }
 
         // StorageManager をシャットダウンし、未書き込みデータを同期フラッシュする

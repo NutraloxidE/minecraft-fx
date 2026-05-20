@@ -4,6 +4,7 @@ import com.gekiyabafx.model.Execution;
 import com.gekiyabafx.model.Order;
 import com.gekiyabafx.model.OrderBook;
 import com.gekiyabafx.model.Pair;
+import com.gekiyabafx.storage.ExecutionRepository;
 import com.gekiyabafx.storage.StorageManager;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -32,6 +33,15 @@ import java.util.Map;
  * （GSON を使わず Javalin の組み込み Jackson/JSON を使うため、文字列変換を自前で行う。）</p>
  */
 public final class PublicApiRouter {
+
+    private final ExecutionRepository executionRepo;
+
+    /**
+     * @param executionRepo 約定履歴リポジトリ（H2）
+     */
+    public PublicApiRouter(ExecutionRepository executionRepo) {
+        this.executionRepo = executionRepo;
+    }
 
     /**
      * {@link Javalin} アプリに公開 API ルートを登録する。
@@ -208,28 +218,29 @@ public final class PublicApiRouter {
             }
         }
 
-        // ── スナップショット取得（ロック内） ──────────────────────────────────
-        List<Map<String, Object>> execSnap = new ArrayList<>();
+        // ── ペアの存在確認（ロック内） ────────────────────────────────────────
         StorageManager sm = StorageManager.getInstance();
-        final long sinceF = since;
         sm.lock();
         try {
-            Pair pair = sm.getData().getPairs().get(pairId);
-            if (pair == null) {
+            if (!sm.getData().getPairs().containsKey(pairId)) {
                 ctx.status(404).json(Map.of("error", "pair_not_found"));
                 return;
             }
-            for (Execution ex : pair.getExecutions()) {
-                if (ex.getTimestamp() > sinceF) {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("timestamp", ex.getTimestamp());
-                    m.put("price",     bdStr(ex.getPrice()));
-                    m.put("amount",    bdStr(ex.getAmount()));
-                    execSnap.add(m);
-                }
-            }
         } finally {
             sm.unlock();
+        }
+
+        // ── H2 から約定履歴を取得（ロック外） ────────────────────────────────
+        final long sinceF = since;
+        List<Execution> execs = executionRepo.findByPairSince(pairId, sinceF);
+
+        List<Map<String, Object>> execSnap = new ArrayList<>(execs.size());
+        for (Execution ex : execs) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("timestamp", ex.getTimestamp());
+            m.put("price",     bdStr(ex.getPrice()));
+            m.put("amount",    bdStr(ex.getAmount()));
+            execSnap.add(m);
         }
 
         Map<String, Object> resp = new LinkedHashMap<>();

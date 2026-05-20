@@ -38,6 +38,9 @@ dependencies {
     // ─── GSON（BigDecimalカスタムアダプター込みのJSONシリアライズ）─────────────────
     implementation("com.google.code.gson:gson:2.10.1")
 
+    // ─── H2 Database（約定履歴の永続化）───────────────────────────────────────────
+    implementation("com.h2database:h2:2.2.224")
+
     // ─── テスト（JUnit 5）────────────────────────────────────────────────────────
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

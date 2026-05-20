@@ -6,6 +6,7 @@ import com.gekiyabafx.engine.InsufficientBalanceException;
 import com.gekiyabafx.engine.MatchResult;
 import com.gekiyabafx.engine.MatchingEngine;
 import com.gekiyabafx.model.*;
+import com.gekiyabafx.storage.ExecutionRepository;
 import com.gekiyabafx.storage.StorageManager;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -29,16 +30,20 @@ import java.util.*;
  */
 public final class PlayerApiRouter {
 
-    private final SessionManager playerSessionManager;
-    private final PluginConfig   config;
+    private final SessionManager     playerSessionManager;
+    private final PluginConfig        config;
+    private final ExecutionRepository executionRepo;
 
     /**
      * @param playerSessionManager プレイヤー用 {@link SessionManager}
      * @param config               プラグイン設定
+     * @param executionRepo        約定履歴リポジトリ（H2）
      */
-    public PlayerApiRouter(SessionManager playerSessionManager, PluginConfig config) {
+    public PlayerApiRouter(SessionManager playerSessionManager, PluginConfig config,
+                           ExecutionRepository executionRepo) {
         this.playerSessionManager = playerSessionManager;
         this.config               = config;
+        this.executionRepo        = executionRepo;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -293,7 +298,10 @@ public final class PlayerApiRouter {
             }
 
             sm.markDirty();
-
+            // H2 に約定を永続化（ロック外で行っても良いが、result の参照を封じるためここで行う）
+            for (Execution ex : result.getExecutions()) {
+                executionRepo.insert(pairId, ex);
+            }
             // ── レスポンス ───────────────────────────────────────────────────
             List<Map<String, Object>> execList = new ArrayList<>();
             for (Execution ex : result.getExecutions()) {

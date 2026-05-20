@@ -122,10 +122,8 @@ public final class MatchingEngine {
             }
         }
 
-        // ④ 約定履歴・lastPrice を更新する
+        // ④ lastPrice を更新する（約定履歴は H2ExecutionRepository に委譲）
         if (!newExecs.isEmpty()) {
-            pair.getExecutions().addAll(newExecs);
-            trimList(pair.getExecutions(), config.getExecutionsMaxPerPair());
             pair.setLastPrice(newExecs.get(newExecs.size() - 1).getPrice());
         }
 

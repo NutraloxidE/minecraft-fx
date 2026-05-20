@@ -1,7 +1,12 @@
+> Task :clean
 
 > Task :compileJava
 ノート: C:\git\minecraft-fx\src\main\java\com\gekiyabafx\GekiyabaFXPlugin.javaは推奨されないAPIを使用またはオーバーライドしています。
 ノート: 詳細は、-Xlint:deprecationオプションを指定して再コンパイルしてください。
 
-BUILD SUCCESSFUL in 5s
-1 actionable task: 1 executed
+> Task :processResources
+> Task :classes
+> Task :shadowJar
+
+BUILD SUCCESSFUL in 18s
+4 actionable tasks: 4 executed
