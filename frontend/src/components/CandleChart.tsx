@@ -13,19 +13,27 @@ import type { IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-c
 import { aggregateCandles, TIMEFRAMES } from '@/lib/candles'
 import { useExecutionCache } from '@/hooks/useExecutionCache'
 
-interface Props {
-  pairId: string | null
+interface ContextMenuItem {
+  label: string
+  onClick: () => void
+  disabled?: boolean
 }
 
-export default function CandleChart({ pairId }: Props) {
+interface Props {
+  pairId: string | null
+  contextMenuItems?: ContextMenuItem[]
+}
+
+export default function CandleChart({ pairId, contextMenuItems = [] }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<IChartApi | null>(null)
   const seriesRef    = useRef<ISeriesApi<'Candlestick'> | null>(null)
-  const [tfSec, setTfSec] = useState(60) // デフォルト: 1分足
+  const [tfSec, setTfSec] = useState(60)
   const [hoveredCandle, setHoveredCandle] = useState<{
     open: number; high: number; low: number; close: number
   } | null>(null)
   const candleDataRef = useRef<CandlestickData<Time>[]>([])
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
 
   const { executions, loading } = useExecutionCache(pairId)
 
@@ -118,7 +126,35 @@ export default function CandleChart({ pairId }: Props) {
   const isUp = hoveredCandle ? hoveredCandle.close >= hoveredCandle.open : true
 
   return (
-    <div className="candle-chart-wrap">
+    <div
+      className="candle-chart-wrap"
+      onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }) }}
+      onClick={() => setContextMenu(null)}
+    >
+      {/* コンテキストメニュー */}
+      {contextMenu && (
+        <ul
+          className="chart-context-menu"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {contextMenuItems.length === 0 ? (
+            <li className="chart-context-item chart-context-empty">(メニューなし)</li>
+          ) : (
+            contextMenuItems.map((item, i) => (
+              <li key={i} className={`chart-context-item${item.disabled ? ' disabled' : ''}`}>
+                <button
+                  type="button"
+                  disabled={item.disabled}
+                  onClick={() => { item.onClick(); setContextMenu(null) }}
+                >
+                  {item.label}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
       {/* ホバー中ローソク情報 */}
       <div className="candle-ohlc-bar">
         {hoveredCandle ? (

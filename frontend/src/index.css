@@ -1104,6 +1104,48 @@ code {
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+  position: relative;
+}
+
+/* コンテキストメニュー */
+.chart-context-menu {
+  position: fixed;
+  z-index: 9999;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  min-width: 140px;
+}
+.chart-context-item {
+  padding: 0;
+}
+.chart-context-item button {
+  display: block;
+  width: 100%;
+  padding: 6px 14px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+.chart-context-item button:hover {
+  background: var(--border);
+}
+.chart-context-item.disabled button {
+  opacity: 0.4;
+  cursor: default;
+}
+.chart-context-empty {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  color: var(--text);
+  opacity: 0.4;
 }
 
 .timeframe-selector {
