@@ -14,6 +14,7 @@ interface Props {
   pair: PairSummary | null
   hotStorage: Record<string, string>
   onOrderPlaced: (res: PlaceOrderResponse) => void
+  externalPrice?: { price: string; side: 'BUY' | 'SELL'; key: number } | null
 }
 
 type Side = 'BUY' | 'SELL'
@@ -26,9 +27,10 @@ interface SideFormProps {
   quote: string
   hotStorage: Record<string, string>
   onOrderPlaced: (res: PlaceOrderResponse) => void
+  externalPrice?: { price: string; side: 'BUY' | 'SELL'; key: number } | null
 }
 
-function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced }: SideFormProps) {
+function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, externalPrice }: SideFormProps) {
   const [type, setType] = useState<OrderType>('LIMIT')
   const [price, setPrice] = useState(pair.last_price ?? '')
   const [amount, setAmount] = useState('')
@@ -45,6 +47,14 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced }: S
     setPct(0)
     setError(null)
   }, [pair.id, pair.last_price])
+
+  // チャートから価格設定
+  useEffect(() => {
+    if (!externalPrice || externalPrice.side !== side) return
+    setType('LIMIT')
+    setPrice(externalPrice.price)
+    setPct(0)
+  }, [externalPrice?.key])
 
   const isBuy = side === 'BUY'
 
@@ -296,7 +306,7 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced }: S
   )
 }
 
-export default function OrderForm({ pair, hotStorage, onOrderPlaced }: Props) {
+export default function OrderForm({ pair, hotStorage, onOrderPlaced, externalPrice }: Props) {
   if (!pair) {
     return <div className="order-form-empty">ペアを選択してください</div>
   }
@@ -306,8 +316,8 @@ export default function OrderForm({ pair, hotStorage, onOrderPlaced }: Props) {
 
   return (
     <div className="order-form-dual">
-      <OrderSideForm side="BUY" pair={pair} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} />
-      <OrderSideForm side="SELL" pair={pair} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} />
+      <OrderSideForm side="BUY" pair={pair} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} />
+      <OrderSideForm side="SELL" pair={pair} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} />
     </div>
   )
 }

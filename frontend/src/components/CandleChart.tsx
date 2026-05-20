@@ -22,9 +22,10 @@ interface ContextMenuItem {
 interface Props {
   pairId: string | null
   contextMenuItems?: ContextMenuItem[]
+  onSetPrice?: (price: number, side: 'BUY' | 'SELL') => void
 }
 
-export default function CandleChart({ pairId, contextMenuItems = [] }: Props) {
+export default function CandleChart({ pairId, contextMenuItems = [], onSetPrice }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<IChartApi | null>(null)
   const seriesRef    = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -167,6 +168,23 @@ export default function CandleChart({ pairId, contextMenuItems = [] }: Props) {
               {hoveredCandle ? 'この終値をコピー' : '最新の終値をコピー'}{contextMenu.closePrice != null ? ` (${contextMenu.closePrice.toFixed(4)})` : ''}
             </button>
           </li>
+          {/* 売り/買い価格設定 */}
+          {onSetPrice && contextMenu.price != null && (() => {
+            const latestClose = candleDataRef.current.at(-1)?.close ?? null
+            if (latestClose == null) return null
+            const isSell = contextMenu.price > latestClose
+            const side = isSell ? 'SELL' : 'BUY'
+            const label = isSell
+              ? `${contextMenu.price.toFixed(4)} で売り価格を設定`
+              : `${contextMenu.price.toFixed(4)} で買い価格を設定`
+            return (
+              <li className="chart-context-item">
+                <button type="button" onClick={() => { onSetPrice(contextMenu.price!, side); setContextMenu(null) }}>
+                  {label}
+                </button>
+              </li>
+            )
+          })()}
           {/* カスタムアイテム */}
           {contextMenuItems.length > 0 && <li className="chart-context-separator" />}
           {contextMenuItems.map((item, i) => (

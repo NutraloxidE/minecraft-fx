@@ -27,6 +27,7 @@ export default function TradePage() {
   const [pairs, setPairs] = useState<PairSummary[]>([])
   const [selectedPairId, setSelectedPairId] = useState<string | null>(null)
   const { orderBook } = useMarketData(selectedPairId)
+  const [externalPrice, setExternalPrice] = useState<{ price: string; side: 'BUY' | 'SELL'; key: number } | null>(null)
 
   // ペア一覧を取得する
   useEffect(() => {
@@ -101,7 +102,10 @@ export default function TradePage() {
 
       {/* ローソク足チャート */}
       <section className="trade-section">
-        <CandleChart pairId={selectedPairId} />
+        <CandleChart
+          pairId={selectedPairId}
+          onSetPrice={(price, side) => setExternalPrice({ price: price.toFixed(4), side, key: Date.now() })}
+        />
       </section>
 
       {/* メインエリア */}
@@ -118,6 +122,7 @@ export default function TradePage() {
             pair={selectedPair}
             hotStorage={hotStorage}
             onOrderPlaced={handleOrderPlaced}
+            externalPrice={externalPrice}
           />
 
           {/* 残高 */}
