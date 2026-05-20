@@ -188,7 +188,7 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced }: S
       {/* 価格（指値のみ） */}
       {type === 'LIMIT' && (
         <label className="order-field">
-          <span>価格 ({quote})</span>
+          <span>価格 ({quote})<span className="price-step-hint"> ▼▲ Ctrl+クリックで10倍</span></span>
           <div className="order-price-input-wrap">
             <button type="button" className="price-step-btn" onClick={(e) => adjustPrice(-1, e.ctrlKey ? 10 : 1)}>▼</button>
             <input
@@ -241,8 +241,6 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced }: S
           </div>
         </label>
       )}
-
-      <span className="price-step-hint">▼▲ Ctrl+クリックで10倍</span>
 
       {error && <p className="order-error">{error}</p>}
 

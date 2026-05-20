@@ -537,11 +537,11 @@ code {
 }
 
 .price-step-hint {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   color: var(--text);
   opacity: 0.38;
-  margin-top: 0.15rem;
   display: block;
+  margin-top: 0.02rem;
   font-family: var(--mono);
 }
 
