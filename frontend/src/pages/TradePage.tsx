@@ -114,9 +114,9 @@ export default function TradePage() {
 
         {/* 注文フォーム */}
         <section className="trade-section trade-section-form">
-          <h2 className="section-title">注文</h2>
           <OrderForm
             pair={selectedPair}
+            hotStorage={hotStorage}
             onOrderPlaced={handleOrderPlaced}
           />
 
