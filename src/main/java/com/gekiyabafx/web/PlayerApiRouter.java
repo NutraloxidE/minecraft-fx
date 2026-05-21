@@ -13,6 +13,7 @@ import io.javalin.http.Context;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.Locale;
 
 /**
  * 認証済みプレイヤー向け API エンドポイントを Javalin アプリに登録するルーター。
@@ -59,6 +60,8 @@ public final class PlayerApiRouter {
         app.get("/api/state",          this::handleState);
         app.post("/api/order",         this::handlePlaceOrder);
         app.delete("/api/order/{id}",  this::handleCancelOrder);
+        app.get("/api/transfer/resolve", this::handleResolveTransferTarget);
+        app.post("/api/transfer",        this::handleTransfer);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -375,6 +378,145 @@ public final class PlayerApiRouter {
             }
 
             ctx.status(404).json(Map.of("error", "order_not_found"));
+        } finally {
+            sm.unlock();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  GET /api/transfer/resolve?q=<nameOrUuid>
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 振込先アカウントを UUID または名前で検索する。
+     */
+    private void handleResolveTransferTarget(Context ctx) {
+        SessionManager.SessionEntry entry = requireAuth(ctx);
+        if (entry == null) return;
+
+        String q = ctx.queryParam("q");
+        if (q == null || q.trim().isEmpty()) {
+            ctx.status(400).json(Map.of("error", "missing_query"));
+            return;
+        }
+        String key = q.trim();
+
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            StorageData data = sm.getData();
+
+            PlayerData byUuid = data.getPlayers().get(key);
+            if (byUuid != null) {
+                ctx.json(Map.of(
+                        "found", true,
+                        "uuid", key,
+                        "name", byUuid.getName() != null ? byUuid.getName() : ""
+                ));
+                return;
+            }
+
+            for (Map.Entry<String, PlayerData> e : data.getPlayers().entrySet()) {
+                String name = e.getValue().getName();
+                if (name != null && name.equalsIgnoreCase(key)) {
+                    ctx.json(Map.of(
+                            "found", true,
+                            "uuid", e.getKey(),
+                            "name", name
+                    ));
+                    return;
+                }
+            }
+
+            ctx.json(Map.of("found", false));
+        } finally {
+            sm.unlock();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  POST /api/transfer
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 自分のホット残高から他アカウントへ振り込みを実行する。
+     */
+    private void handleTransfer(Context ctx) {
+        SessionManager.SessionEntry entry = requireAuth(ctx);
+        if (entry == null) return;
+
+        String fromUuid = entry.getIdentity();
+
+        Map<String, Object> body;
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> parsed = ctx.bodyAsClass(Map.class);
+            body = parsed;
+        } catch (Exception e) {
+            ctx.status(400).json(Map.of("error", "bad_request"));
+            return;
+        }
+
+        String toUuid = getString(body, "to_uuid");
+        String itemRaw = getString(body, "item");
+        BigDecimal amount = parseBigDecimal(body, "amount");
+
+        if (toUuid == null || toUuid.isBlank() || itemRaw == null || itemRaw.isBlank() || amount == null) {
+            ctx.status(400).json(Map.of("error", "missing_fields"));
+            return;
+        }
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            ctx.status(400).json(Map.of("error", "invalid_amount"));
+            return;
+        }
+        if (fromUuid.equals(toUuid)) {
+            ctx.status(400).json(Map.of("error", "self_transfer_forbidden"));
+            return;
+        }
+
+        String item = itemRaw.toLowerCase(Locale.ROOT);
+        BigDecimal amt = amount.setScale(4, java.math.RoundingMode.HALF_UP);
+
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            StorageData data = sm.getData();
+
+            PlayerData from = data.getPlayers().get(fromUuid);
+            PlayerData to   = data.getPlayers().get(toUuid);
+
+            if (from == null) {
+                ctx.status(404).json(Map.of("error", "player_not_found"));
+                return;
+            }
+            if (to == null) {
+                ctx.status(404).json(Map.of("error", "target_not_found"));
+                return;
+            }
+
+            BigDecimal fromBal = from.getHotBalance(item);
+            if (fromBal.compareTo(amt) < 0) {
+                ctx.status(400).json(Map.of("error", "insufficient_balance"));
+                return;
+            }
+
+            BigDecimal toBal = to.getHotBalance(item);
+            BigDecimal fromAfter = fromBal.subtract(amt).setScale(4, java.math.RoundingMode.HALF_UP);
+            BigDecimal toAfter   = toBal.add(amt).setScale(4, java.math.RoundingMode.HALF_UP);
+
+            from.setHotBalance(item, fromAfter);
+            to.setHotBalance(item, toAfter);
+            sm.markDirty();
+
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("ok", true);
+            resp.put("item", item);
+            resp.put("amount", amt.toPlainString());
+            resp.put("from_uuid", fromUuid);
+            resp.put("to_uuid", toUuid);
+            resp.put("from_balance_after", fromAfter.toPlainString());
+            resp.put("to_balance_after", toAfter.toPlainString());
+            ctx.status(200).json(resp);
         } finally {
             sm.unlock();
         }

@@ -10,6 +10,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import TradePage from '@/pages/TradePage'
 import AdminPage from '@/pages/AdminPage'
+import TransferPage from '@/pages/TransferPage'
 import './index.css'
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/trade" element={<TradePage />} />
+        <Route path="/transfer" element={<TransferPage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="*" element={<Navigate to="/trade" replace />} />
       </Routes>

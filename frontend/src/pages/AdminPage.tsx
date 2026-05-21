@@ -1,3 +1,4 @@
+
 /**
  * 管理者ページ（/admin）
  *
@@ -287,7 +288,7 @@ export default function AdminPage() {
   if (authState === 'unauthenticated') {
     return (
       <div className="auth-screen">
-        <h1 className="auth-title">GekiyabaFX 管理者</h1>
+        <h1 className="auth-title">💥GekiyabaFX 管理者</h1>
         <p className="auth-message">
           {error
             ? `認証エラー: ${error}`

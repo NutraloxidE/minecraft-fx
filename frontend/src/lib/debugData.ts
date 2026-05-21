@@ -137,3 +137,11 @@ export const DEBUG_PLAYER_STATE: PlayerStateResponse = {
   pending_deposit:  { diamond: 2 },
   pending_withdraw: { emerald: 1 },
 }
+
+// ─── Transfer ページ用 ─────────────────────────────────────────────────────
+
+export const DEBUG_TRANSFER_TARGET = {
+  found: true,
+  uuid:  'aaaabbbb-cccc-dddd-eeee-ffff00001111',
+  name:  'SamplePlayer',
+}

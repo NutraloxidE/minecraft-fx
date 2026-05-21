@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { fetchPairs } from '@/lib/api'
 import { usePlayerAuth } from '@/hooks/usePlayerAuth'
 import { useDebugMode } from '@/hooks/useDebugMode'
@@ -22,6 +23,7 @@ import DepositPanel from '@/components/DepositPanel'
 import type { PairSummary, PlaceOrderResponse } from '@/types/api'
 
 export default function TradePage() {
+  const navigate = useNavigate()
   const isDebug = useDebugMode()
   const { authState, playerState, error, logout, refresh } = usePlayerAuth()
   const [pairs, setPairs] = useState<PairSummary[]>([])
@@ -86,8 +88,11 @@ export default function TradePage() {
   return (
     <div className="trade-page">
       <header className="trade-header">
-        <span className="trade-header-title">GekiyabaFX</span>
+        <span className="trade-header-title">💥GekiyabaFX</span>
         <span className="trade-header-user">{playerState?.name ?? ''}</span>
+        <button className="trade-header-logout" onClick={() => navigate('/transfer')}>
+          振込
+        </button>
         <button className="trade-header-logout" onClick={logout}>
           ログアウト
         </button>

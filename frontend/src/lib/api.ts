@@ -162,6 +162,36 @@ export const deposit = (req: DepositRequest): Promise<DepositResponse> =>
 export const withdraw = (req: WithdrawRequest): Promise<WithdrawResponse> =>
   request('POST', '/api/withdraw', getPlayerToken(), req)
 
+export interface ResolveTransferTargetResponse {
+  found: boolean
+  uuid?: string
+  name?: string
+}
+
+export interface TransferRequest {
+  to_uuid: string
+  item: string
+  amount: string
+}
+
+export interface TransferResponse {
+  ok: boolean
+  item: string
+  amount: string
+  from_uuid: string
+  to_uuid: string
+  from_balance_after: string
+  to_balance_after: string
+}
+
+/** 振込先を UUID またはユーザー名で検索する */
+export const resolveTransferTarget = (q: string): Promise<ResolveTransferTargetResponse> =>
+  request('GET', `/api/transfer/resolve?q=${encodeURIComponent(q)}`, getPlayerToken())
+
+/** ホット口座残高を他アカウントへ振り込む */
+export const transfer = (req: TransferRequest): Promise<TransferResponse> =>
+  request('POST', '/api/transfer', getPlayerToken(), req)
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  認証 API（管理者）
 // ─────────────────────────────────────────────────────────────────────────────
