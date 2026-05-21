@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAdminAuth } from '@/hooks/useAdminAuth'
+import { useDebugMode } from '@/hooks/useDebugMode'
 import {
   adminFetchPairs,
   adminCreatePair,
@@ -17,6 +18,7 @@ import {
   adminDeletePair,
   adminFetchServiceAccounts,
 } from '@/lib/api'
+import { DEBUG_ADMIN_PAIRS, DEBUG_SERVICE_ACCOUNTS } from '@/lib/debugData'
 import type { AdminPair, CreatePairRequest } from '@/types/api'
 import type { ServiceAccount } from '@/lib/api'
 
@@ -28,9 +30,10 @@ const EMPTY_FORM: CreatePairRequest = {
 
 interface CreateFormProps {
   onCreated: () => void
+  isDebug: boolean
 }
 
-function CreatePairForm({ onCreated }: CreateFormProps) {
+function CreatePairForm({ onCreated, isDebug }: CreateFormProps) {
   const [form, setForm] = useState<CreatePairRequest>(EMPTY_FORM)
   const [busy, setBusy] = useState(false)
   const [msg,  setMsg]  = useState<{ text: string; ok: boolean } | null>(null)
@@ -44,6 +47,14 @@ function CreatePairForm({ onCreated }: CreateFormProps) {
       setMsg({ text: 'ID / Base / Quote は必須です', ok: false })
       return
     }
+
+    if (isDebug) {
+      setMsg({ text: `[DEBUG] ペア ${form.id} を作成したことにします`, ok: true })
+      setForm(EMPTY_FORM)
+      onCreated()
+      return
+    }
+
     setBusy(true); setMsg(null)
     try {
       await adminCreatePair(form)
@@ -89,6 +100,7 @@ function CreatePairForm({ onCreated }: CreateFormProps) {
         </label>
       </div>
       <button className="admin-submit-btn" type="submit" disabled={busy}>作成</button>
+      {isDebug && <p className="admin-msg ok">[DEBUG] APIには保存されません</p>}
       {msg && <p className={`admin-msg ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</p>}
     </form>
   )
@@ -99,9 +111,10 @@ function CreatePairForm({ onCreated }: CreateFormProps) {
 interface PairRowProps {
   pair: AdminPair
   onChanged: () => void
+  isDebug: boolean
 }
 
-function PairRow({ pair, onChanged }: PairRowProps) {
+function PairRow({ pair, onChanged, isDebug }: PairRowProps) {
   const [editing,   setEditing]   = useState(false)
   const [enabled,   setEnabled]   = useState(pair.enabled)
   const [minAmount, setMinAmount] = useState(pair.min_amount)
@@ -110,6 +123,12 @@ function PairRow({ pair, onChanged }: PairRowProps) {
   const [msg,       setMsg]       = useState<{ text: string; ok: boolean } | null>(null)
 
   const handleSave = async () => {
+    if (isDebug) {
+      setMsg({ text: '[DEBUG] 保存したことにします', ok: true })
+      setEditing(false)
+      return
+    }
+
     setBusy(true); setMsg(null)
     try {
       await adminPatchPair(pair.id, { enabled, min_amount: minAmount, min_price: minPrice })
@@ -125,7 +144,21 @@ function PairRow({ pair, onChanged }: PairRowProps) {
   }
 
   const handleDelete = async () => {
-    if (!window.confirm(`ペア "${pair.id}" を削除しますか？`)) return
+    if (isDebug) {
+      const confirmation = window.prompt(`[DEBUG] ペア "${pair.id}" を削除するには delete と入力してください`)
+      if (confirmation !== 'delete') {
+        setMsg({ text: '[DEBUG] 削除をキャンセルしました（delete 未入力）', ok: false })
+        return
+      }
+      setMsg({ text: '[DEBUG] 削除したことにします', ok: true })
+      return
+    }
+
+    const confirmation = window.prompt(`ペア "${pair.id}" を削除するには delete と入力してください`)
+    if (confirmation !== 'delete') {
+      setMsg({ text: '削除をキャンセルしました（delete 未入力）', ok: false })
+      return
+    }
     setBusy(true); setMsg(null)
     try {
       await adminDeletePair(pair.id)
@@ -181,17 +214,20 @@ function PairRow({ pair, onChanged }: PairRowProps) {
 
 // ─── サービスアカウント残高 ────────────────────────────────────────────────────
 
-function ServiceAccountBalances() {
+function ServiceAccountBalances({ isDebug }: { isDebug: boolean }) {
   const [accounts, setAccounts] = useState<ServiceAccount[]>([])
   const [loading,  setLoading]  = useState(true)
   const [err,      setErr]      = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setErr(null)
-    try { setAccounts(await adminFetchServiceAccounts()) }
+    try {
+      if (isDebug) setAccounts(DEBUG_SERVICE_ACCOUNTS)
+      else setAccounts(await adminFetchServiceAccounts())
+    }
     catch (e: unknown) { setErr((e as { message?: string }).message ?? '取得失敗') }
     finally { setLoading(false) }
-  }, [])
+  }, [isDebug])
 
   useEffect(() => { load() }, [load])
 
@@ -230,7 +266,7 @@ function ServiceAccountBalances() {
 
 // ─── ペアテーブル ─────────────────────────────────────────────────────────────
 
-function PairTable() {
+function PairTable({ isDebug }: { isDebug: boolean }) {
   const [pairs,    setPairs]    = useState<AdminPair[]>([])
   const [loading,  setLoading]  = useState(true)
   const [fetchErr, setFetchErr] = useState<string | null>(null)
@@ -238,14 +274,15 @@ function PairTable() {
   const load = useCallback(async () => {
     setLoading(true); setFetchErr(null)
     try {
-      setPairs(await adminFetchPairs())
+      if (isDebug) setPairs(DEBUG_ADMIN_PAIRS)
+      else setPairs(await adminFetchPairs())
     } catch (e: unknown) {
       const err = e as { message?: string }
       setFetchErr(err.message ?? 'ペア一覧の取得に失敗しました')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [isDebug])
 
   useEffect(() => { load() }, [load])
 
@@ -264,7 +301,7 @@ function PairTable() {
         <tbody>
           {pairs.length === 0
             ? <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text)' }}>ペアなし</td></tr>
-            : pairs.map((p) => <PairRow key={p.id} pair={p} onChanged={load} />)
+            : pairs.map((p) => <PairRow key={p.id} pair={p} onChanged={load} isDebug={isDebug} />)
           }
         </tbody>
       </table>
@@ -275,9 +312,11 @@ function PairTable() {
 // ─── メインページ ────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
+  const isDebug = useDebugMode()
   const { authState, error, logout } = useAdminAuth()
+  const effectiveAuthState = isDebug ? 'authenticated' : authState
 
-  if (authState === 'loading') {
+  if (effectiveAuthState === 'loading') {
     return (
       <div className="auth-screen">
         <p className="auth-message">認証中...</p>
@@ -285,7 +324,7 @@ export default function AdminPage() {
     )
   }
 
-  if (authState === 'unauthenticated') {
+  if (effectiveAuthState === 'unauthenticated') {
     return (
       <div className="auth-screen">
         <h1 className="auth-title">💥GekiyabaFX 管理者</h1>
@@ -308,15 +347,15 @@ export default function AdminPage() {
       <main className="admin-main">
         <section className="admin-section">
           <h2 className="admin-page-title">ペア管理</h2>
-          <PairTable />
+          <PairTable isDebug={isDebug} />
         </section>
 
         <section className="admin-section">
-          <CreatePairForm onCreated={() => { /* PairTable は内部で reload */ }} />
+          <CreatePairForm onCreated={() => { /* PairTable は内部で reload */ }} isDebug={isDebug} />
         </section>
 
         <section className="admin-section">
-          <ServiceAccountBalances />
+          <ServiceAccountBalances isDebug={isDebug} />
         </section>
       </main>
     </div>

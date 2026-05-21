@@ -7,10 +7,12 @@
 
 import type {
   PairSummary,
+  AdminPair,
   OrderBookResponse,
   Execution,
   PlayerStateResponse,
 } from '@/types/api'
+import type { ServiceAccount } from '@/lib/api'
 
 // ─── ペア一覧 ──────────────────────────────────────────────────────────────────
 
@@ -145,3 +147,63 @@ export const DEBUG_TRANSFER_TARGET = {
   uuid:  'aaaabbbb-cccc-dddd-eeee-ffff00001111',
   name:  'SamplePlayer',
 }
+
+// ─── Admin ページ用 ────────────────────────────────────────────────────────
+
+export const DEBUG_ADMIN_PAIRS: AdminPair[] = [
+  {
+    id: 'DIAMOND/EMERALD',
+    base: 'diamond',
+    quote: 'emerald',
+    enabled: true,
+    min_amount: '1',
+    min_price: '0.0001',
+    last_price: '4.3200',
+  },
+  {
+    id: 'GOLD/EMERALD',
+    base: 'gold',
+    quote: 'emerald',
+    enabled: true,
+    min_amount: '1',
+    min_price: '0.0001',
+    last_price: '0.8500',
+  },
+  {
+    id: 'IRON/EMERALD',
+    base: 'iron_ingot',
+    quote: 'emerald',
+    enabled: false,
+    min_amount: '1',
+    min_price: '0.0001',
+    last_price: null,
+  },
+]
+
+export const DEBUG_SERVICE_ACCOUNTS: ServiceAccount[] = [
+  {
+    name: 'treasury-fee',
+    id: 'treasury-fee',
+    hot_storage: {
+      emerald: '1234.5600',
+      diamond: '98.0000',
+    },
+  },
+  {
+    name: 'intervention-main',
+    id: 'intervention-main',
+    hot_storage: {
+      emerald: '5000.0000',
+      gold: '300.0000',
+    },
+  },
+  {
+    name: 'market-bot-1',
+    id: 'market-bot-1',
+    hot_storage: {
+      diamond: '42.0000',
+      emerald: '850.0000',
+      gold: '120.0000',
+    },
+  },
+]

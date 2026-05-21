@@ -71,7 +71,7 @@ export default function TradePage() {
   if (authState === 'unauthenticated') {
     return (
       <div className="auth-screen">
-        <h1 className="auth-title">GekiyabaFX</h1>
+        <h1 className="auth-title">💥GekiyabaFX</h1>
         <p className="auth-message">
           {error
             ? `認証エラー: ${error}`
