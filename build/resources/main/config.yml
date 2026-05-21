@@ -39,6 +39,10 @@ fee:
 # 通貨キーごとの手数料率オーバーライド。
 # Minecraft に存在しないアイテム名（TempKey 等）を含むペアに個別レートを設定する。
 # 登録がない通貨は fee.maker / fee.taker を使用する。
+# 例:
+#   feeOverrides:
+#     tempkey: "0.0050"     # 0.50%（TempKey 系通貨）
+#     specialcoin: "0.0000" # 手数料なし
 feeOverrides: {}
 
 # ─── Service アカウント ────────────────────────────────────────────

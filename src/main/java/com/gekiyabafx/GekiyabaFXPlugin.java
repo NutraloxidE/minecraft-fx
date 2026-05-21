@@ -139,7 +139,7 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
         // ⑰ 管理者 API エンドポイントを登録する
         //    GET|POST /api/admin/pairs ・ PATCH|DELETE /api/admin/pairs/:id
-        new AdminApiRouter(adminSessionManager).register(webServer.getApp());
+        new AdminApiRouter(adminSessionManager, pluginConfig).register(webServer.getApp());
     }
 
     @Override

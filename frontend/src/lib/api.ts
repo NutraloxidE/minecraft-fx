@@ -175,6 +175,16 @@ export const loginAdmin = (otp: string): Promise<{ token: string }> =>
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 全ペアを取得する（管理者用、無効ペア含む） */
+export interface ServiceAccount {
+  name:        string
+  id:          string
+  hot_storage: Record<string, string>
+}
+
+/** 全サービスアカウントのホット残高を取得する（管理者認証必要） */
+export const adminFetchServiceAccounts = (): Promise<ServiceAccount[]> =>
+  request('GET', '/api/admin/service-accounts', getAdminToken())
+
 export const adminFetchPairs = (): Promise<AdminPair[]> =>
   request('GET', '/api/admin/pairs', getAdminToken())
 

@@ -1,6 +1,7 @@
 package com.gekiyabafx.web;
 
 import com.gekiyabafx.auth.SessionManager;
+import com.gekiyabafx.config.PluginConfig;
 import com.gekiyabafx.model.Pair;
 import com.gekiyabafx.storage.StorageManager;
 import io.javalin.Javalin;
@@ -36,12 +37,15 @@ import java.util.Map;
 public final class AdminApiRouter {
 
     private final SessionManager adminSessionManager;
+    private final PluginConfig   pluginConfig;
 
     /**
      * @param adminSessionManager 管理者用 {@link SessionManager}
+     * @param pluginConfig        サービスアカウント一覧参照用
      */
-    public AdminApiRouter(SessionManager adminSessionManager) {
+    public AdminApiRouter(SessionManager adminSessionManager, PluginConfig pluginConfig) {
         this.adminSessionManager = adminSessionManager;
+        this.pluginConfig        = pluginConfig;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -54,10 +58,11 @@ public final class AdminApiRouter {
      * @param app {@link Javalin} インスタンス
      */
     public void register(Javalin app) {
-        app.get   ("/api/admin/pairs",     this::handleListPairs);
-        app.post  ("/api/admin/pairs",     this::handleCreatePair);
-        app.patch ("/api/admin/pairs/{id}", this::handlePatchPair);
-        app.delete("/api/admin/pairs/{id}", this::handleDeletePair);
+        app.get   ("/api/admin/pairs",              this::handleListPairs);
+        app.post  ("/api/admin/pairs",              this::handleCreatePair);
+        app.patch ("/api/admin/pairs/{id}",         this::handlePatchPair);
+        app.delete("/api/admin/pairs/{id}",         this::handleDeletePair);
+        app.get   ("/api/admin/service-accounts",   this::handleServiceAccounts);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -398,5 +403,43 @@ public final class AdminApiRouter {
         } catch (NumberFormatException e) {
             return defaultVal;
         }
+    }
+
+    private static String bdStr(BigDecimal bd) {
+        if (bd == null) return "0.0000";
+        return bd.setScale(4, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  GET /api/admin/service-accounts
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void handleServiceAccounts(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        StorageManager sm = StorageManager.getInstance();
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        sm.lock();
+        try {
+            for (String name : pluginConfig.getServiceAccounts()) {
+                String id = "svc:" + name;
+                com.gekiyabafx.model.PlayerData pd = sm.getData().getPlayers().get(id);                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("name", name);
+                entry.put("id",   id);
+                if (pd != null) {
+                    Map<String, String> hs = new LinkedHashMap<>();
+                    pd.getHotStorage().forEach((k, v) -> hs.put(k, bdStr(v)));
+                    entry.put("hot_storage", hs);
+                } else {
+                    entry.put("hot_storage", Map.of());
+                }
+                result.add(entry);
+            }
+        } finally {
+            sm.unlock();
+        }
+
+        ctx.status(200).json(result);
     }
 }

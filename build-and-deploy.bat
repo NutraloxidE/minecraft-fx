@@ -102,4 +102,3 @@ echo    reload confirm
 echo  または stop → run-server.bat で再起動してください。
 echo ============================================================
 echo.
-pause

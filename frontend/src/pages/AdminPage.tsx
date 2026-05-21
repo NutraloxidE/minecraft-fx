@@ -14,8 +14,10 @@ import {
   adminCreatePair,
   adminPatchPair,
   adminDeletePair,
+  adminFetchServiceAccounts,
 } from '@/lib/api'
 import type { AdminPair, CreatePairRequest } from '@/types/api'
+import type { ServiceAccount } from '@/lib/api'
 
 // ─── ペア作成フォーム ──────────────────────────────────────────────────────────
 
@@ -176,6 +178,55 @@ function PairRow({ pair, onChanged }: PairRowProps) {
   )
 }
 
+// ─── サービスアカウント残高 ────────────────────────────────────────────────────
+
+function ServiceAccountBalances() {
+  const [accounts, setAccounts] = useState<ServiceAccount[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [err,      setErr]      = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(null)
+    try { setAccounts(await adminFetchServiceAccounts()) }
+    catch (e: unknown) { setErr((e as { message?: string }).message ?? '取得失敗') }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  return (
+    <div className="svc-balances">
+      <div className="svc-balances-header">
+        <h3 className="admin-section-title">サービスアカウント残高</h3>
+        <button className="admin-edit-btn" onClick={load} disabled={loading}>更新</button>
+      </div>
+      {loading && <p className="admin-loading">読み込み中...</p>}
+      {err     && <p className="admin-err-msg">{err}</p>}
+      {!loading && !err && (
+        <div className="svc-balances-grid">
+          {accounts.map((a) => (
+            <div key={a.id} className="svc-card">
+              <div className="svc-card-name">{a.name}</div>
+              <div className="svc-card-id">{a.id}</div>
+              <div className="svc-card-storage">
+                {Object.keys(a.hot_storage).length === 0
+                  ? <span className="svc-card-empty">残高なし</span>
+                  : Object.entries(a.hot_storage).map(([k, v]) => (
+                      <div key={k} className="svc-card-row">
+                        <span className="svc-card-item">{k}</span>
+                        <span className="svc-card-val">{v}</span>
+                      </div>
+                    ))
+                }
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── ペアテーブル ─────────────────────────────────────────────────────────────
 
 function PairTable() {
@@ -261,6 +312,10 @@ export default function AdminPage() {
 
         <section className="admin-section">
           <CreatePairForm onCreated={() => { /* PairTable は内部で reload */ }} />
+        </section>
+
+        <section className="admin-section">
+          <ServiceAccountBalances />
         </section>
       </main>
     </div>
