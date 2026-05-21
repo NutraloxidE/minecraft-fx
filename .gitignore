@@ -24,3 +24,5 @@ paper-server/
 .DS_Store
 Thumbs.db
 /.gradle
+
+build-log.txt
