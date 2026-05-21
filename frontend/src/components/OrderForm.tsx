@@ -6,8 +6,9 @@
  */
 
 import { useState, useEffect } from 'react'
-import { placeOrder } from '@/lib/api'
+import { placeOrder, fetchPairFee } from '@/lib/api'
 import { ApiException } from '@/lib/api'
+import type { PairFeeResponse } from '@/lib/api'
 import type { PairSummary, PlaceOrderResponse } from '@/types/api'
 
 interface Props {
@@ -28,9 +29,10 @@ interface SideFormProps {
   hotStorage: Record<string, string>
   onOrderPlaced: (res: PlaceOrderResponse) => void
   externalPrice?: { price: string; side: 'BUY' | 'SELL'; key: number } | null
+  feeRate: PairFeeResponse | null
 }
 
-function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, externalPrice }: SideFormProps) {
+function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, externalPrice, feeRate }: SideFormProps) {
   const [type, setType] = useState<OrderType>('LIMIT')
   const [price, setPrice] = useState(pair.last_price ?? '')
   const [amount, setAmount] = useState('')
@@ -119,16 +121,12 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
     }
   }
 
-  // 最大値表示用
-  const maxInfoText = (() => {
-    if (isBuy) {
-      const p = parseFloat(price)
-      if (type === 'LIMIT' && !isNaN(p) && p > 0)
-        return `最大買い: ${(quoteBalance / p).toFixed(4)} ${base}`
-      return `最大支払い: ${quoteBalance.toFixed(4)} ${quote}`
-    }
-    return `最大売り: ${baseBalance.toFixed(4)} ${base}`
-  })()
+  const p_ = parseFloat(price)
+  const maxInfoText = isBuy
+    ? (type === 'LIMIT' && !isNaN(p_) && p_ > 0)
+      ? `最大買い: ${(quoteBalance / p_).toFixed(4)} ${base}`
+      : `最大支払い: ${quoteBalance.toFixed(4)} ${quote}`
+    : `最大売り: ${baseBalance.toFixed(4)} ${base}`
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -291,6 +289,25 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
       {/* 最大値表示 */}
       <div className="order-max-info">{maxInfoText}</div>
 
+      {/* 予想手数料 */}
+      {feeRate && (() => {
+        const takerRate = parseFloat(isBuy ? feeRate.taker_base : feeRate.taker_quote)
+        const rateLabel = `${(takerRate * 100).toFixed(2)}%`
+        const p = parseFloat(price), a = parseFloat(amount)
+        const feeAmt = type === 'LIMIT'
+          ? (isBuy
+            ? (!isNaN(a) && a > 0 ? (a * takerRate).toFixed(4) : null)
+            : (!isNaN(p) && p > 0 && !isNaN(a) && a > 0 ? (p * a * takerRate).toFixed(4) : null))
+          : null
+        return (
+          <div className="order-fee-info">
+            {feeAmt
+              ? <>予想手数料 (Taker {rateLabel}): <strong>{feeAmt} {isBuy ? base : quote}</strong></>
+              : `手数料率 (Taker): ${rateLabel}`}
+          </div>
+        )
+      })()}
+
       <button
         type="submit"
         className={`order-submit${isBuy ? ' buy' : ' sell'}`}
@@ -310,6 +327,15 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
 }
 
 export default function OrderForm({ pair, hotStorage, onOrderPlaced, externalPrice }: Props) {
+  const [feeRate, setFeeRate] = useState<PairFeeResponse | null>(null)
+
+  useEffect(() => {
+    if (!pair) return
+    fetchPairFee(pair.id)
+      .then(setFeeRate)
+      .catch(() => setFeeRate(null))
+  }, [pair?.id])
+
   if (!pair) {
     return <div className="order-form-empty">ペアを選択してください</div>
   }
@@ -319,8 +345,8 @@ export default function OrderForm({ pair, hotStorage, onOrderPlaced, externalPri
 
   return (
     <div className="order-form-dual">
-      <OrderSideForm side="BUY" pair={pair} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} />
-      <OrderSideForm side="SELL" pair={pair} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} />
+      <OrderSideForm side="BUY"  pair={pair} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} />
+      <OrderSideForm side="SELL" pair={pair} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} />
     </div>
   )
 }

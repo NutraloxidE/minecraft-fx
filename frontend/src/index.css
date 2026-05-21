@@ -554,7 +554,8 @@ code {
   color: var(--text);
   opacity: 0.38;
   display: block;
-  margin-top: 0.02rem;
+  margin-top: -0.3rem;
+  margin-bottom: -0.3;
   font-family: var(--mono);
 }
 
@@ -576,8 +577,24 @@ code {
   opacity: 0.45;
   font-family: var(--mono);
   text-align: center;
-  padding: 0.1rem 0 0.2rem;
+  padding: 0rem 0 0;
+  margin-bottom: -0.5rem;
   letter-spacing: 0.01em;
+}
+
+.order-fee-info {
+  font-size: 0.72rem;
+  color: var(--text);
+  opacity: 0.55;
+  font-family: var(--mono);
+  text-align: center;
+  padding: 0 0 0rem;
+  margin-top: -0.5rem;
+  letter-spacing: 0.01em;
+}
+.order-fee-info strong {
+  opacity: 1;
+  color: var(--text);
 }
 
 /* 残高スライダー */

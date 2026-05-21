@@ -99,6 +99,18 @@ async function request<T>(
 export const fetchPairs = (): Promise<PairSummary[]> =>
   request('GET', '/api/pairs', null)
 
+export interface PairFeeResponse {
+  pair:        string
+  maker_base:  string
+  taker_base:  string
+  maker_quote: string
+  taker_quote: string
+}
+
+/** 指定ペアの手数料率を取得する */
+export const fetchPairFee = (pairId: string): Promise<PairFeeResponse> =>
+  request('GET', `/api/pairs/${encodeURIComponent(pairId)}/fee`, null)
+
 /** 指定ペアのオーダーブック（板）を取得する */
 export const fetchOrderBook = (pairId: string): Promise<OrderBookResponse> =>
   request('GET', `/api/orderbook?pair=${encodeURIComponent(pairId)}`, null)
