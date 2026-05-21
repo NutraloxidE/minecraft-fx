@@ -29,6 +29,22 @@ executions-max-per-pair: 10000
 # order_history の最大保持件数（ペアごと）。超過分は古い順に削除される。
 order-history-max-per-pair: 500
 
+# ─── 手数料 ───────────────────────────────────────────────────────────
+# Maker（板に残っていた注文）と Taker（新規注文）それぞれの手数料率。
+# 約定時に買い手・売り手の両側から独立して徴収し、svc:treasury-fee へ振り込む。
+fee:
+  maker: "0.0010"   # 0.10%
+  taker: "0.0012"   # 0.12%
+
+# 通貨キーごとの手数料率オーバーライド。
+# Minecraft に存在しないアイテム名（TempKey 等）を含むペアに個別レートを設定する。
+# 登録がない通貨は fee.maker / fee.taker を使用する。
+# 例:
+#   feeOverrides:
+#     tempkey: "0.0050"     # 0.50%（TempKey 系通貨）
+#     specialcoin: "0.0000" # 手数料なし
+feeOverrides: {}
+
 # ─── Service アカウント ────────────────────────────────────────────
 # /fx login-as <name> で使用できる Service アカウント名の許可リスト。
 # ここに記載された名前のみログイン可能。内部IDは svc:<name> になる。

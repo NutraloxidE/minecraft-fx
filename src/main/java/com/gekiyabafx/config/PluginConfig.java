@@ -2,8 +2,11 @@ package com.gekiyabafx.config;
 
 import org.bukkit.configuration.ConfigurationSection;
 
+import java.math.BigDecimal;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * {@code config.yml} の全設定値をメモリ上に保持するイミュータブルなデータクラス。
@@ -58,6 +61,25 @@ public final class PluginConfig {
     private final int orderHistoryMaxPerPair;
 
     /**
+     * Maker（板残り注文側）の手数料率。
+     * config.yml の {@code fee.maker}。デフォルト: 0.0010 (0.10%)
+     */
+    private final BigDecimal feeMaker;
+
+    /**
+     * Taker（新規注文側）の手数料率。
+     * config.yml の {@code fee.taker}。デフォルト: 0.0012 (0.12%)
+     */
+    private final BigDecimal feeTaker;
+
+    /**
+     * 通貨キーごとの手数料率オーバーライド。
+     * キー: アイテム名（例: {@code "TempKey"}）、値: 手数料率。
+     * config.yml の {@code feeOverrides} マップに対応する。
+     */
+    private final Map<String, BigDecimal> feeOverrides;
+
+    /**
      * /fx login-as で使用できる Service アカウント名の許可リスト（svc: プレフィックスなし）。
      * config.yml の {@code serviceAccounts} リストに対応する。
      */
@@ -73,6 +95,9 @@ public final class PluginConfig {
             long sessionExpireSeconds,
             int executionsMaxPerPair,
             int orderHistoryMaxPerPair,
+            BigDecimal feeMaker,
+            BigDecimal feeTaker,
+            Map<String, BigDecimal> feeOverrides,
             List<String> serviceAccounts
     ) {
         this.serverIp              = serverIp;
@@ -82,6 +107,9 @@ public final class PluginConfig {
         this.sessionExpireSeconds   = sessionExpireSeconds;
         this.executionsMaxPerPair   = executionsMaxPerPair;
         this.orderHistoryMaxPerPair = orderHistoryMaxPerPair;
+        this.feeMaker               = feeMaker;
+        this.feeTaker               = feeTaker;
+        this.feeOverrides           = Collections.unmodifiableMap(feeOverrides);
         this.serviceAccounts        = Collections.unmodifiableList(serviceAccounts);
     }
 
@@ -102,7 +130,8 @@ public final class PluginConfig {
         return new PluginConfig(serverIp, webPort, devMode,
                 otpExpireSeconds, sessionExpireSeconds,
                 executionsMaxPerPair, orderHistoryMaxPerPair,
-                Collections.emptyList());
+                new BigDecimal("0.0010"), new BigDecimal("0.0012"),
+                Collections.emptyMap(), Collections.emptyList());
     }
 
     // ─── ファクトリメソッド ────────────────────────────────────────────────────
@@ -159,6 +188,25 @@ public final class PluginConfig {
 
         List<String> serviceAccounts = cfg.getStringList("serviceAccounts");
 
+        // fee.maker / fee.taker
+        ConfigurationSection feeSection = cfg.getConfigurationSection("fee");
+        BigDecimal feeMaker = new BigDecimal(feeSection != null
+                ? feeSection.getString("maker", "0.0010") : "0.0010");
+        BigDecimal feeTaker = new BigDecimal(feeSection != null
+                ? feeSection.getString("taker", "0.0012") : "0.0012");
+
+        // feeOverrides
+        Map<String, BigDecimal> feeOverrides = new HashMap<>();
+        ConfigurationSection overridesSection = cfg.getConfigurationSection("feeOverrides");
+        if (overridesSection != null) {
+            for (String key : overridesSection.getKeys(false)) {
+                String val = overridesSection.getString(key);
+                if (val != null) {
+                    feeOverrides.put(key, new BigDecimal(val));
+                }
+            }
+        }
+
         return new PluginConfig(
                 serverIp,
                 webPort,
@@ -167,6 +215,9 @@ public final class PluginConfig {
                 sessionExpireSeconds,
                 executionsMaxPerPair,
                 orderHistoryMaxPerPair,
+                feeMaker,
+                feeTaker,
+                feeOverrides,
                 serviceAccounts
         );
     }
@@ -213,6 +264,33 @@ public final class PluginConfig {
         return serviceAccounts;
     }
 
+    /** @return Maker 手数料率 */
+    public BigDecimal getFeeMaker() {
+        return feeMaker;
+    }
+
+    /** @return Taker 手数料率 */
+    public BigDecimal getFeeTaker() {
+        return feeTaker;
+    }
+
+    /**
+     * 指定通貨の手数料率を返す。
+     * {@code feeOverrides} に登録があればその値、なければ {@code globalRate} を返す。
+     *
+     * @param currencyKey 通貨キー（例: {@code "diamond"}, {@code "TempKey"})
+     * @param globalRate  フォールバックに使うグローバルレート（maker または taker）
+     * @return 適用する手数料率
+     */
+    public BigDecimal resolveFeeRate(String currencyKey, BigDecimal globalRate) {
+        return feeOverrides.getOrDefault(currencyKey, globalRate);
+    }
+
+    /** @return feeOverrides マップ（読み取り専用） */
+    public Map<String, BigDecimal> getFeeOverrides() {
+        return feeOverrides;
+    }
+
     // ─── デバッグ用 toString ───────────────────────────────────────────────────
 
     @Override
@@ -225,6 +303,9 @@ public final class PluginConfig {
                 + ", sessionExpireSeconds=" + sessionExpireSeconds
                 + ", executionsMaxPerPair=" + executionsMaxPerPair
                 + ", orderHistoryMaxPerPair=" + orderHistoryMaxPerPair
+                + ", feeMaker=" + feeMaker
+                + ", feeTaker=" + feeTaker
+                + ", feeOverrides=" + feeOverrides
                 + ", serviceAccounts=" + serviceAccounts
                 + '}';
     }

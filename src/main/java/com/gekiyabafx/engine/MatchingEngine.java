@@ -289,7 +289,7 @@ public final class MatchingEngine {
 
             if (execAmount.compareTo(BigDecimal.ZERO) <= 0) break;
 
-            settle(pairId, pair, buy, ask, execPrice, execAmount, data);
+            settle(pairId, pair, buy, ask, execPrice, execAmount, data, config, true);
             spentQuote = spentQuote.add(
                     execPrice.multiply(execAmount).setScale(4, RoundingMode.HALF_UP));
             execs.add(new Execution(now, execPrice, execAmount));
@@ -350,7 +350,7 @@ public final class MatchingEngine {
 
             if (execAmount.compareTo(BigDecimal.ZERO) <= 0) break;
 
-            settle(pairId, pair, bid, sell, execPrice, execAmount, data);
+            settle(pairId, pair, bid, sell, execPrice, execAmount, data, config, false);
             execs.add(new Execution(now, execPrice, execAmount));
 
             // bid が全量約定したら板から除去
@@ -373,22 +373,39 @@ public final class MatchingEngine {
      * 1回の約定を決済する。
      *
      * <ul>
-     *   <li>買い手: {@code locked_quote -= execPrice × execAmount}, {@code hot_base += execAmount}</li>
-     *   <li>売り手: {@code locked_base -= execAmount}, {@code hot_quote += execPrice × execAmount}</li>
-     *   <li>両注文の {@code filled} を {@code execAmount} 加算する。</li>
+     *   <li>買い手: {@code locked_quote -= cost}, {@code hot_base += execAmount - baseFee}</li>
+     *   <li>売り手: {@code locked_base -= execAmount}, {@code hot_quote += cost - quoteFee}</li>
+     *   <li>baseFee → {@code svc:treasury-fee} の base 残高へ加算</li>
+     *   <li>quoteFee → {@code svc:treasury-fee} の quote 残高へ加算</li>
+     *   <li>incoming（Taker）は Taker レート、板の相手（Maker）は Maker レートを適用する。</li>
      * </ul>
+     *
+     * @param isBuyTaker {@code true} なら buy が Taker（incoming）、sell が Maker
      */
     private static void settle(
             String pairId, Pair pair,
             Order buy, Order sell,
             BigDecimal execPrice, BigDecimal execAmount,
-            StorageData data
+            StorageData data, PluginConfig config,
+            boolean isBuyTaker
     ) {
         String base  = pair.getBase();
         String quote = pair.getQuote();
         BigDecimal cost = execPrice.multiply(execAmount).setScale(4, RoundingMode.HALF_UP);
 
-        // 買い手: locked_quote → hot_base
+        // ─── 手数料率の決定 ───────────────────────────────────────────────────
+        // buy（base 受取）側の手数料率: buy が Taker なら taker レート、Maker なら maker レート
+        BigDecimal buyFeeRate = config.resolveFeeRate(base,
+                isBuyTaker ? config.getFeeTaker() : config.getFeeMaker());
+        // sell（quote 受取）側の手数料率: sell が Taker なら taker レート、Maker なら maker レート
+        BigDecimal sellFeeRate = config.resolveFeeRate(quote,
+                isBuyTaker ? config.getFeeMaker() : config.getFeeTaker());
+
+        // ─── 手数料額の計算 ───────────────────────────────────────────────────
+        BigDecimal baseFee  = execAmount.multiply(buyFeeRate).setScale(4, RoundingMode.HALF_UP);
+        BigDecimal quoteFee = cost.multiply(sellFeeRate).setScale(4, RoundingMode.HALF_UP);
+
+        // ─── 買い手: locked_quote → hot_base（手数料差し引き後） ──────────────
         PlayerData buyer = data.getPlayers().get(buy.getUuid());
         if (buyer != null) {
             buyer.setLockedBalance(pairId, quote,
@@ -396,11 +413,12 @@ public final class MatchingEngine {
                          .subtract(cost).max(BigDecimal.ZERO)
                          .setScale(4, RoundingMode.HALF_UP));
             buyer.setHotBalance(base,
-                    buyer.getHotBalance(base).add(execAmount)
+                    buyer.getHotBalance(base)
+                         .add(execAmount).subtract(baseFee)
                          .setScale(4, RoundingMode.HALF_UP));
         }
 
-        // 売り手: locked_base → hot_quote
+        // ─── 売り手: locked_base → hot_quote（手数料差し引き後） ──────────────
         PlayerData seller = data.getPlayers().get(sell.getUuid());
         if (seller != null) {
             seller.setLockedBalance(pairId, base,
@@ -408,11 +426,30 @@ public final class MatchingEngine {
                           .subtract(execAmount).max(BigDecimal.ZERO)
                           .setScale(4, RoundingMode.HALF_UP));
             seller.setHotBalance(quote,
-                    seller.getHotBalance(quote).add(cost)
+                    seller.getHotBalance(quote)
+                          .add(cost).subtract(quoteFee)
                           .setScale(4, RoundingMode.HALF_UP));
         }
 
-        // 約定済み数量を更新
+        // ─── treasury-fee への手数料振り込み ─────────────────────────────────
+        final String TREASURY_ID = "svc:treasury-fee";
+        PlayerData treasury = data.getPlayers().get(TREASURY_ID);
+        if (treasury == null) {
+            treasury = new PlayerData("[SERVICE] treasury-fee");
+            data.getPlayers().put(TREASURY_ID, treasury);
+        }
+        if (baseFee.compareTo(BigDecimal.ZERO) > 0) {
+            treasury.setHotBalance(base,
+                    treasury.getHotBalance(base).add(baseFee)
+                            .setScale(4, RoundingMode.HALF_UP));
+        }
+        if (quoteFee.compareTo(BigDecimal.ZERO) > 0) {
+            treasury.setHotBalance(quote,
+                    treasury.getHotBalance(quote).add(quoteFee)
+                            .setScale(4, RoundingMode.HALF_UP));
+        }
+
+        // ─── 約定済み数量を更新 ───────────────────────────────────────────────
         buy.setFilled(buy.getFilled().add(execAmount).setScale(4, RoundingMode.HALF_UP));
         sell.setFilled(sell.getFilled().add(execAmount).setScale(4, RoundingMode.HALF_UP));
     }

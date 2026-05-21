@@ -1,5 +1,6 @@
 package com.gekiyabafx.web;
 
+import com.gekiyabafx.config.PluginConfig;
 import com.gekiyabafx.model.Execution;
 import com.gekiyabafx.model.Order;
 import com.gekiyabafx.model.OrderBook;
@@ -35,12 +36,15 @@ import java.util.Map;
 public final class PublicApiRouter {
 
     private final ExecutionRepository executionRepo;
+    private final PluginConfig pluginConfig;
 
     /**
      * @param executionRepo 約定履歴リポジトリ（H2）
+     * @param pluginConfig  手数料率参照用
      */
-    public PublicApiRouter(ExecutionRepository executionRepo) {
+    public PublicApiRouter(ExecutionRepository executionRepo, PluginConfig pluginConfig) {
         this.executionRepo = executionRepo;
+        this.pluginConfig  = pluginConfig;
     }
 
     /**
@@ -49,9 +53,10 @@ public final class PublicApiRouter {
      * @param app {@link Javalin} インスタンス
      */
     public void register(Javalin app) {
-        app.get("/api/pairs",       this::handlePairs);
-        app.get("/api/orderbook",   this::handleOrderBook);
-        app.get("/api/executions",  this::handleExecutions);
+        app.get("/api/pairs",           this::handlePairs);
+        app.get("/api/pairs/{id}/fee",  this::handlePairFee);
+        app.get("/api/orderbook",       this::handleOrderBook);
+        app.get("/api/executions",      this::handleExecutions);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -102,6 +107,72 @@ public final class PublicApiRouter {
         }
 
         ctx.status(200).json(result);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  GET /api/pairs/{id}/fee
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 指定ペアの手数料率を返す。
+     *
+     * <p>パスパラメータ {@code id} は URL エンコードされた pairId
+     * （例: {@code DIAMOND%2FEMERALD}）を想定する。
+     * ペアが存在しない場合でもグローバル手数料率を返す。
+     *
+     * <h4>レスポンス例（200）</h4>
+     * <pre>{@code
+     * {
+     *   "pair":        "DIAMOND/EMERALD",
+     *   "maker_base":  "0.0010",
+     *   "taker_base":  "0.0012",
+     *   "maker_quote": "0.0010",
+     *   "taker_quote": "0.0012"
+     * }
+     * }</pre>
+     *
+     * @param ctx Javalin コンテキスト
+     */
+    private void handlePairFee(Context ctx) {
+        String rawId = ctx.pathParam("id");
+        // pairId の base / quote を取得してfeeOverridesを引く
+        StorageManager sm = StorageManager.getInstance();
+        Pair pair = null;
+        sm.lock();
+        try {
+            pair = sm.getData().getPairs().get(rawId);
+        } finally {
+            sm.unlock();
+        }
+
+        BigDecimal globalMaker = pluginConfig.getFeeMaker();
+        BigDecimal globalTaker = pluginConfig.getFeeTaker();
+
+        BigDecimal makerBase;
+        BigDecimal takerBase;
+        BigDecimal makerQuote;
+        BigDecimal takerQuote;
+
+        if (pair != null) {
+            makerBase  = pluginConfig.resolveFeeRate(pair.getBase(),  globalMaker);
+            takerBase  = pluginConfig.resolveFeeRate(pair.getBase(),  globalTaker);
+            makerQuote = pluginConfig.resolveFeeRate(pair.getQuote(), globalMaker);
+            takerQuote = pluginConfig.resolveFeeRate(pair.getQuote(), globalTaker);
+        } else {
+            // ペアが存在しない場合はグローバル値を返す
+            makerBase  = globalMaker;
+            takerBase  = globalTaker;
+            makerQuote = globalMaker;
+            takerQuote = globalTaker;
+        }
+
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("pair",        rawId);
+        resp.put("maker_base",  feeStr(makerBase));
+        resp.put("taker_base",  feeStr(takerBase));
+        resp.put("maker_quote", feeStr(makerQuote));
+        resp.put("taker_quote", feeStr(takerQuote));
+        ctx.status(200).json(resp);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -291,6 +362,14 @@ public final class PublicApiRouter {
      * @return 文字列表現（例: {@code "4.3000"}）
      */
     private static String bdStr(BigDecimal bd) {
+        if (bd == null) return "0.0000";
+        return bd.setScale(4, java.math.RoundingMode.HALF_UP).toPlainString();
+    }
+
+    /**
+     * 手数料率を scale=4 の文字列に変換する（例: {@code "0.0010"}）。
+     */
+    private static String feeStr(BigDecimal bd) {
         if (bd == null) return "0.0000";
         return bd.setScale(4, java.math.RoundingMode.HALF_UP).toPlainString();
     }

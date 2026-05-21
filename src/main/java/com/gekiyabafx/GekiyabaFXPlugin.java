@@ -127,7 +127,7 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
         ).register(webServer.getApp());
 
         // ⑩ 公開 API エンドポイントを登録する（GET /api/pairs ・ /api/orderbook ・ /api/executions）
-        new PublicApiRouter(executionRepo).register(webServer.getApp());
+        new PublicApiRouter(executionRepo, pluginConfig).register(webServer.getApp());
 
         // ② プレイヤー API エンドポイントを登録する
         //    GET /api/state ・ POST /api/order ・ DELETE /api/order/:id
