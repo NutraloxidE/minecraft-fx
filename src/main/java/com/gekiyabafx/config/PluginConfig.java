@@ -85,6 +85,24 @@ public final class PluginConfig {
      */
     private final List<String> serviceAccounts;
 
+    // ─── 裁定取引（Arbitrage） ───────────────────────────────────────────────
+
+    private final boolean arbitrageEnabled;
+    private final String arbitrageServiceAccount;
+    private final int arbitrageCheckIntervalTicks;
+    private final BigDecimal arbitrageMinGrossSpreadPct;
+    private final BigDecimal arbitrageMinNetProfitPct;
+    private final BigDecimal arbitrageSlipPriceChangeThresholdPct;
+    private final BigDecimal arbitrageSlipVolumeDropThresholdPct;
+    private final int arbitrageSlipLookbackTicks;
+    private final BigDecimal arbitrageLimitPriceTolerancePct;
+    private final BigDecimal arbitragePartialSpreadDivergenceThresholdPct;
+    private final BigDecimal arbitragePartialMidpriceProximityThresholdPct;
+    private final boolean arbitrageFrameDistributionEnabled;
+    private final int arbitragePhaseCount;
+    private final String arbitrageLogFile;
+    private final String arbitrageLogLevel;
+
     // ─── コンストラクタ（private — ファクトリメソッド経由でのみ生成） ──────────
 
     private PluginConfig(
@@ -98,7 +116,22 @@ public final class PluginConfig {
             BigDecimal feeMaker,
             BigDecimal feeTaker,
             Map<String, BigDecimal> feeOverrides,
-            List<String> serviceAccounts
+                List<String> serviceAccounts,
+                boolean arbitrageEnabled,
+                String arbitrageServiceAccount,
+                int arbitrageCheckIntervalTicks,
+                BigDecimal arbitrageMinGrossSpreadPct,
+                BigDecimal arbitrageMinNetProfitPct,
+                BigDecimal arbitrageSlipPriceChangeThresholdPct,
+                BigDecimal arbitrageSlipVolumeDropThresholdPct,
+                int arbitrageSlipLookbackTicks,
+                BigDecimal arbitrageLimitPriceTolerancePct,
+                BigDecimal arbitragePartialSpreadDivergenceThresholdPct,
+                BigDecimal arbitragePartialMidpriceProximityThresholdPct,
+                boolean arbitrageFrameDistributionEnabled,
+                int arbitragePhaseCount,
+                String arbitrageLogFile,
+                String arbitrageLogLevel
     ) {
         this.serverIp              = serverIp;
         this.webPort                = webPort;
@@ -111,6 +144,21 @@ public final class PluginConfig {
         this.feeTaker               = feeTaker;
         this.feeOverrides           = Collections.unmodifiableMap(feeOverrides);
         this.serviceAccounts        = Collections.unmodifiableList(serviceAccounts);
+        this.arbitrageEnabled       = arbitrageEnabled;
+        this.arbitrageServiceAccount = arbitrageServiceAccount;
+        this.arbitrageCheckIntervalTicks = arbitrageCheckIntervalTicks;
+        this.arbitrageMinGrossSpreadPct = arbitrageMinGrossSpreadPct;
+        this.arbitrageMinNetProfitPct = arbitrageMinNetProfitPct;
+        this.arbitrageSlipPriceChangeThresholdPct = arbitrageSlipPriceChangeThresholdPct;
+        this.arbitrageSlipVolumeDropThresholdPct = arbitrageSlipVolumeDropThresholdPct;
+        this.arbitrageSlipLookbackTicks = arbitrageSlipLookbackTicks;
+        this.arbitrageLimitPriceTolerancePct = arbitrageLimitPriceTolerancePct;
+        this.arbitragePartialSpreadDivergenceThresholdPct = arbitragePartialSpreadDivergenceThresholdPct;
+        this.arbitragePartialMidpriceProximityThresholdPct = arbitragePartialMidpriceProximityThresholdPct;
+        this.arbitrageFrameDistributionEnabled = arbitrageFrameDistributionEnabled;
+        this.arbitragePhaseCount = arbitragePhaseCount;
+        this.arbitrageLogFile = arbitrageLogFile;
+        this.arbitrageLogLevel = arbitrageLogLevel;
     }
 
     // ─── テスト用ファクトリ ────────────────────────────────────────────────────
@@ -131,7 +179,13 @@ public final class PluginConfig {
                 otpExpireSeconds, sessionExpireSeconds,
                 executionsMaxPerPair, orderHistoryMaxPerPair,
                 new BigDecimal("0.0010"), new BigDecimal("0.0012"),
-                Collections.emptyMap(), Collections.emptyList());
+            Collections.emptyMap(), Collections.emptyList(),
+            false, "svc:arbitrage", 300,
+            new BigDecimal("0.5"), new BigDecimal("0.30"),
+            new BigDecimal("3.0"), new BigDecimal("35"), 60,
+            new BigDecimal("1.2"), new BigDecimal("2.0"), new BigDecimal("0.5"),
+            true, 3,
+            "plugins/GekiyabaFX/logs/arbitrage.log", "INFO");
     }
 
     // ─── ファクトリメソッド ────────────────────────────────────────────────────
@@ -207,6 +261,77 @@ public final class PluginConfig {
             }
         }
 
+        ConfigurationSection arbitrageSection = cfg.getConfigurationSection("arbitrage");
+        boolean arbitrageEnabled = arbitrageSection != null && arbitrageSection.getBoolean("enabled", false);
+        String arbitrageServiceAccount = arbitrageSection != null
+            ? arbitrageSection.getString("service_account", "svc:arbitrage")
+            : "svc:arbitrage";
+        if (arbitrageServiceAccount == null || arbitrageServiceAccount.isBlank()) {
+            arbitrageServiceAccount = "svc:arbitrage";
+        }
+
+        int arbitrageCheckIntervalTicks = arbitrageSection != null
+            ? arbitrageSection.getInt("check_interval_ticks", 300)
+            : 300;
+        if (arbitrageCheckIntervalTicks < 1) {
+            throw new IllegalArgumentException("config.yml: arbitrage.check_interval_ticks は 1 以上にしてください: "
+                + arbitrageCheckIntervalTicks);
+        }
+
+        BigDecimal arbitrageMinGrossSpreadPct = new BigDecimal(arbitrageSection != null
+            ? arbitrageSection.getString("min_gross_spread_pct", "0.5") : "0.5");
+        BigDecimal arbitrageMinNetProfitPct = new BigDecimal(arbitrageSection != null
+            ? arbitrageSection.getString("min_net_profit_pct", "0.30") : "0.30");
+
+        ConfigurationSection slip = arbitrageSection != null
+            ? arbitrageSection.getConfigurationSection("slip_detection")
+            : null;
+        BigDecimal arbitrageSlipPriceChangeThresholdPct = new BigDecimal(slip != null
+            ? slip.getString("price_change_threshold_pct", "3.0") : "3.0");
+        BigDecimal arbitrageSlipVolumeDropThresholdPct = new BigDecimal(slip != null
+            ? slip.getString("volume_drop_threshold_pct", "35") : "35");
+        int arbitrageSlipLookbackTicks = slip != null
+            ? slip.getInt("check_lookback_ticks", 60)
+            : 60;
+
+        BigDecimal arbitrageLimitPriceTolerancePct = new BigDecimal(arbitrageSection != null
+            ? arbitrageSection.getString("limit_price_tolerance_pct", "1.2") : "1.2");
+
+        ConfigurationSection partial = arbitrageSection != null
+            ? arbitrageSection.getConfigurationSection("partial_fill_cancel_policy")
+            : null;
+        BigDecimal arbitragePartialSpreadDivergenceThresholdPct = new BigDecimal(partial != null
+            ? partial.getString("spread_divergence_threshold_pct", "2.0") : "2.0");
+        BigDecimal arbitragePartialMidpriceProximityThresholdPct = new BigDecimal(partial != null
+            ? partial.getString("midprice_proximity_threshold_pct", "0.5") : "0.5");
+
+        ConfigurationSection frame = arbitrageSection != null
+            ? arbitrageSection.getConfigurationSection("frame_distribution")
+            : null;
+        boolean arbitrageFrameDistributionEnabled = frame != null
+            && frame.getBoolean("enabled", true);
+        int arbitragePhaseCount = frame != null
+            ? frame.getInt("phase_count", 3)
+            : 3;
+        if (arbitragePhaseCount < 1) {
+            throw new IllegalArgumentException("config.yml: arbitrage.frame_distribution.phase_count は 1 以上にしてください: "
+                + arbitragePhaseCount);
+        }
+
+        String arbitrageLogFile = arbitrageSection != null
+            ? arbitrageSection.getString("log_file", "plugins/GekiyabaFX/logs/arbitrage.log")
+            : "plugins/GekiyabaFX/logs/arbitrage.log";
+        if (arbitrageLogFile == null || arbitrageLogFile.isBlank()) {
+            arbitrageLogFile = "plugins/GekiyabaFX/logs/arbitrage.log";
+        }
+
+        String arbitrageLogLevel = arbitrageSection != null
+            ? arbitrageSection.getString("log_level", "INFO")
+            : "INFO";
+        if (arbitrageLogLevel == null || arbitrageLogLevel.isBlank()) {
+            arbitrageLogLevel = "INFO";
+        }
+
         return new PluginConfig(
                 serverIp,
                 webPort,
@@ -218,7 +343,22 @@ public final class PluginConfig {
                 feeMaker,
                 feeTaker,
                 feeOverrides,
-                serviceAccounts
+                serviceAccounts,
+                arbitrageEnabled,
+                arbitrageServiceAccount,
+                arbitrageCheckIntervalTicks,
+                arbitrageMinGrossSpreadPct,
+                arbitrageMinNetProfitPct,
+                arbitrageSlipPriceChangeThresholdPct,
+                arbitrageSlipVolumeDropThresholdPct,
+                arbitrageSlipLookbackTicks,
+                arbitrageLimitPriceTolerancePct,
+                arbitragePartialSpreadDivergenceThresholdPct,
+                arbitragePartialMidpriceProximityThresholdPct,
+                arbitrageFrameDistributionEnabled,
+                arbitragePhaseCount,
+                arbitrageLogFile,
+                arbitrageLogLevel
         );
     }
 
@@ -291,6 +431,66 @@ public final class PluginConfig {
         return feeOverrides;
     }
 
+    public boolean isArbitrageEnabled() {
+        return arbitrageEnabled;
+    }
+
+    public String getArbitrageServiceAccount() {
+        return arbitrageServiceAccount;
+    }
+
+    public int getArbitrageCheckIntervalTicks() {
+        return arbitrageCheckIntervalTicks;
+    }
+
+    public BigDecimal getArbitrageMinGrossSpreadPct() {
+        return arbitrageMinGrossSpreadPct;
+    }
+
+    public BigDecimal getArbitrageMinNetProfitPct() {
+        return arbitrageMinNetProfitPct;
+    }
+
+    public BigDecimal getArbitrageSlipPriceChangeThresholdPct() {
+        return arbitrageSlipPriceChangeThresholdPct;
+    }
+
+    public BigDecimal getArbitrageSlipVolumeDropThresholdPct() {
+        return arbitrageSlipVolumeDropThresholdPct;
+    }
+
+    public int getArbitrageSlipLookbackTicks() {
+        return arbitrageSlipLookbackTicks;
+    }
+
+    public BigDecimal getArbitrageLimitPriceTolerancePct() {
+        return arbitrageLimitPriceTolerancePct;
+    }
+
+    public BigDecimal getArbitragePartialSpreadDivergenceThresholdPct() {
+        return arbitragePartialSpreadDivergenceThresholdPct;
+    }
+
+    public BigDecimal getArbitragePartialMidpriceProximityThresholdPct() {
+        return arbitragePartialMidpriceProximityThresholdPct;
+    }
+
+    public boolean isArbitrageFrameDistributionEnabled() {
+        return arbitrageFrameDistributionEnabled;
+    }
+
+    public int getArbitragePhaseCount() {
+        return arbitragePhaseCount;
+    }
+
+    public String getArbitrageLogFile() {
+        return arbitrageLogFile;
+    }
+
+    public String getArbitrageLogLevel() {
+        return arbitrageLogLevel;
+    }
+
     // ─── デバッグ用 toString ───────────────────────────────────────────────────
 
     @Override
@@ -307,6 +507,21 @@ public final class PluginConfig {
                 + ", feeTaker=" + feeTaker
                 + ", feeOverrides=" + feeOverrides
                 + ", serviceAccounts=" + serviceAccounts
+                + ", arbitrageEnabled=" + arbitrageEnabled
+                + ", arbitrageServiceAccount='" + arbitrageServiceAccount + "'"
+                + ", arbitrageCheckIntervalTicks=" + arbitrageCheckIntervalTicks
+                + ", arbitrageMinGrossSpreadPct=" + arbitrageMinGrossSpreadPct
+                + ", arbitrageMinNetProfitPct=" + arbitrageMinNetProfitPct
+                + ", arbitrageSlipPriceChangeThresholdPct=" + arbitrageSlipPriceChangeThresholdPct
+                + ", arbitrageSlipVolumeDropThresholdPct=" + arbitrageSlipVolumeDropThresholdPct
+                + ", arbitrageSlipLookbackTicks=" + arbitrageSlipLookbackTicks
+                + ", arbitrageLimitPriceTolerancePct=" + arbitrageLimitPriceTolerancePct
+                + ", arbitragePartialSpreadDivergenceThresholdPct=" + arbitragePartialSpreadDivergenceThresholdPct
+                + ", arbitragePartialMidpriceProximityThresholdPct=" + arbitragePartialMidpriceProximityThresholdPct
+                + ", arbitrageFrameDistributionEnabled=" + arbitrageFrameDistributionEnabled
+                + ", arbitragePhaseCount=" + arbitragePhaseCount
+                + ", arbitrageLogFile='" + arbitrageLogFile + "'"
+                + ", arbitrageLogLevel='" + arbitrageLogLevel + "'"
                 + '}';
     }
 }

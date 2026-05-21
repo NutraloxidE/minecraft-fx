@@ -52,3 +52,31 @@ serviceAccounts:
   - treasury-fee
   - intervention-main
   - market-bot-1
+  - arbitrage
+
+# ─── 裁定取引（Arbitrage） ─────────────────────────────────────────────
+arbitrage:
+  enabled: false
+  service_account: "svc:arbitrage"
+  check_interval_ticks: 300
+
+  min_gross_spread_pct: "0.5"
+  min_net_profit_pct: "0.30"
+
+  slip_detection:
+    price_change_threshold_pct: "3.0"
+    volume_drop_threshold_pct: "35"
+    check_lookback_ticks: 60
+
+  limit_price_tolerance_pct: "1.2"
+
+  partial_fill_cancel_policy:
+    spread_divergence_threshold_pct: "2.0"
+    midprice_proximity_threshold_pct: "0.5"
+
+  frame_distribution:
+    enabled: true
+    phase_count: 3
+
+  log_file: "plugins/GekiyabaFX/logs/arbitrage.log"
+  log_level: "INFO"

@@ -1,7 +1,8 @@
 package com.gekiyabafx.web;
 
+import com.gekiyabafx.GekiyabaFXPlugin;
+import com.gekiyabafx.arbitrage.ArbitrageService;
 import com.gekiyabafx.auth.SessionManager;
-import com.gekiyabafx.config.PluginConfig;
 import com.gekiyabafx.model.Pair;
 import com.gekiyabafx.storage.StorageManager;
 import io.javalin.Javalin;
@@ -37,15 +38,20 @@ import java.util.Map;
 public final class AdminApiRouter {
 
     private final SessionManager adminSessionManager;
-    private final PluginConfig   pluginConfig;
+    private final GekiyabaFXPlugin plugin;
+    private final ArbitrageService arbitrageService;
 
     /**
      * @param adminSessionManager 管理者用 {@link SessionManager}
-     * @param pluginConfig        サービスアカウント一覧参照用
+     * @param plugin             プラグイン本体
+     * @param arbitrageService   裁定取引サービス
      */
-    public AdminApiRouter(SessionManager adminSessionManager, PluginConfig pluginConfig) {
+    public AdminApiRouter(SessionManager adminSessionManager,
+                          GekiyabaFXPlugin plugin,
+                          ArbitrageService arbitrageService) {
         this.adminSessionManager = adminSessionManager;
-        this.pluginConfig        = pluginConfig;
+        this.plugin = plugin;
+        this.arbitrageService = arbitrageService;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -63,6 +69,8 @@ public final class AdminApiRouter {
         app.patch ("/api/admin/pairs/{id}",         this::handlePatchPair);
         app.delete("/api/admin/pairs/{id}",         this::handleDeletePair);
         app.get   ("/api/admin/service-accounts",   this::handleServiceAccounts);
+        app.patch ("/api/admin/arbitrage/toggle",   this::handleArbitrageToggle);
+        app.get   ("/api/admin/arbitrage/status",   this::handleArbitrageStatus);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -422,9 +430,10 @@ public final class AdminApiRouter {
 
         sm.lock();
         try {
-            for (String name : pluginConfig.getServiceAccounts()) {
+            for (String name : plugin.getPluginConfig().getServiceAccounts()) {
                 String id = "svc:" + name;
-                com.gekiyabafx.model.PlayerData pd = sm.getData().getPlayers().get(id);                Map<String, Object> entry = new LinkedHashMap<>();
+                com.gekiyabafx.model.PlayerData pd = sm.getData().getPlayers().get(id);
+                Map<String, Object> entry = new LinkedHashMap<>();
                 entry.put("name", name);
                 entry.put("id",   id);
                 if (pd != null) {
@@ -441,5 +450,47 @@ public final class AdminApiRouter {
         }
 
         ctx.status(200).json(result);
+    }
+
+    private void handleArbitrageToggle(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        Map<String, Object> body = parseBody(ctx);
+        if (body == null) return;
+
+        Boolean enabled = null;
+        if (body.containsKey("enabled")) {
+            enabled = getBoolean(body, "enabled", false);
+        }
+
+        String serviceAccount = getString(body, "service_account");
+        if (serviceAccount != null && !serviceAccount.isBlank()) {
+            if (!serviceAccount.startsWith("svc:")) {
+                ctx.status(400).json(Map.of("error", "invalid_service_account"));
+                return;
+            }
+            String name = serviceAccount.substring(4);
+            if (!plugin.getPluginConfig().getServiceAccounts().contains(name)) {
+                ctx.status(400).json(Map.of("error", "service_account_not_allowed"));
+                return;
+            }
+        }
+
+        arbitrageService.applyRuntimeConfig(enabled, serviceAccount);
+
+        plugin.getConfig().set("arbitrage.enabled", arbitrageService.isEnabled());
+        plugin.getConfig().set("arbitrage.service_account", arbitrageService.getServiceAccount());
+        plugin.saveConfig();
+
+        ctx.status(200).json(Map.of(
+                "enabled", arbitrageService.isEnabled(),
+                "current_service_account", arbitrageService.getServiceAccount(),
+                "timestamp", java.time.Instant.now().toString()
+        ));
+    }
+
+    private void handleArbitrageStatus(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+        ctx.status(200).json(arbitrageService.getStatusSnapshot());
     }
 }

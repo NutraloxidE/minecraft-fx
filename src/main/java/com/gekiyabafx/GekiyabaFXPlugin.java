@@ -1,5 +1,6 @@
 package com.gekiyabafx;
 
+import com.gekiyabafx.arbitrage.ArbitrageService;
 import com.gekiyabafx.auth.OtpManager;
 import com.gekiyabafx.auth.SessionManager;
 import com.gekiyabafx.command.FxCommandExecutor;
@@ -52,6 +53,9 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
     /** 約定履歴を H2 に永続化するリポジトリ。 */
     private ExecutionRepository executionRepo;
+
+    /** 裁定取引監視サービス。 */
+    private ArbitrageService arbitrageService;
     // ─────────────────────────────────────────────────────────────────────────
     //  静的アクセサ
     // ─────────────────────────────────────────────────────────────────────────
@@ -139,7 +143,10 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
         // ⑰ 管理者 API エンドポイントを登録する
         //    GET|POST /api/admin/pairs ・ PATCH|DELETE /api/admin/pairs/:id
-        new AdminApiRouter(adminSessionManager, pluginConfig).register(webServer.getApp());
+        arbitrageService = new ArbitrageService(this, executionRepo);
+        arbitrageService.start();
+
+        new AdminApiRouter(adminSessionManager, this, arbitrageService).register(webServer.getApp());
     }
 
     @Override
@@ -154,6 +161,10 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
         // H2ExecutionRepository の接続を閉じる
         if (executionRepo != null) {
             executionRepo.close();
+        }
+
+        if (arbitrageService != null) {
+            arbitrageService.stop();
         }
 
         // StorageManager をシャットダウンし、未書き込みデータを同期フラッシュする
@@ -246,5 +257,9 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
      */
     public SessionManager getAdminSessionManager() {
         return adminSessionManager;
+    }
+
+    public ArbitrageService getArbitrageService() {
+        return arbitrageService;
     }
 }
