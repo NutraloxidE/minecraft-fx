@@ -2,6 +2,9 @@ package com.gekiyabafx.config;
 
 import org.bukkit.configuration.ConfigurationSection;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * {@code config.yml} の全設定値をメモリ上に保持するイミュータブルなデータクラス。
  *
@@ -54,6 +57,12 @@ public final class PluginConfig {
      */
     private final int orderHistoryMaxPerPair;
 
+    /**
+     * /fx login-as で使用できる Service アカウント名の許可リスト（svc: プレフィックスなし）。
+     * config.yml の {@code serviceAccounts} リストに対応する。
+     */
+    private final List<String> serviceAccounts;
+
     // ─── コンストラクタ（private — ファクトリメソッド経由でのみ生成） ──────────
 
     private PluginConfig(
@@ -63,7 +72,8 @@ public final class PluginConfig {
             long otpExpireSeconds,
             long sessionExpireSeconds,
             int executionsMaxPerPair,
-            int orderHistoryMaxPerPair
+            int orderHistoryMaxPerPair,
+            List<String> serviceAccounts
     ) {
         this.serverIp              = serverIp;
         this.webPort                = webPort;
@@ -72,6 +82,7 @@ public final class PluginConfig {
         this.sessionExpireSeconds   = sessionExpireSeconds;
         this.executionsMaxPerPair   = executionsMaxPerPair;
         this.orderHistoryMaxPerPair = orderHistoryMaxPerPair;
+        this.serviceAccounts        = Collections.unmodifiableList(serviceAccounts);
     }
 
     // ─── テスト用ファクトリ ────────────────────────────────────────────────────
@@ -90,7 +101,8 @@ public final class PluginConfig {
     ) {
         return new PluginConfig(serverIp, webPort, devMode,
                 otpExpireSeconds, sessionExpireSeconds,
-                executionsMaxPerPair, orderHistoryMaxPerPair);
+                executionsMaxPerPair, orderHistoryMaxPerPair,
+                Collections.emptyList());
     }
 
     // ─── ファクトリメソッド ────────────────────────────────────────────────────
@@ -145,6 +157,8 @@ public final class PluginConfig {
                     "config.yml: order-history-max-per-pair は 1 以上にしてください: " + orderHistoryMaxPerPair);
         }
 
+        List<String> serviceAccounts = cfg.getStringList("serviceAccounts");
+
         return new PluginConfig(
                 serverIp,
                 webPort,
@@ -152,7 +166,8 @@ public final class PluginConfig {
                 otpExpireSeconds,
                 sessionExpireSeconds,
                 executionsMaxPerPair,
-                orderHistoryMaxPerPair
+                orderHistoryMaxPerPair,
+                serviceAccounts
         );
     }
 
@@ -193,6 +208,11 @@ public final class PluginConfig {
         return orderHistoryMaxPerPair;
     }
 
+    /** @return /fx login-as で許可された Service アカウント名リスト（svc: プレフィックスなし） */
+    public List<String> getServiceAccounts() {
+        return serviceAccounts;
+    }
+
     // ─── デバッグ用 toString ───────────────────────────────────────────────────
 
     @Override
@@ -205,6 +225,7 @@ public final class PluginConfig {
                 + ", sessionExpireSeconds=" + sessionExpireSeconds
                 + ", executionsMaxPerPair=" + executionsMaxPerPair
                 + ", orderHistoryMaxPerPair=" + orderHistoryMaxPerPair
+                + ", serviceAccounts=" + serviceAccounts
                 + '}';
     }
 }

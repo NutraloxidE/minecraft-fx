@@ -28,3 +28,11 @@ executions-max-per-pair: 10000
 
 # order_history の最大保持件数（ペアごと）。超過分は古い順に削除される。
 order-history-max-per-pair: 500
+
+# ─── Service アカウント ────────────────────────────────────────────
+# /fx login-as <name> で使用できる Service アカウント名の許可リスト。
+# ここに記載された名前のみログイン可能。内部IDは svc:<name> になる。
+serviceAccounts:
+  - treasury-fee
+  - intervention-main
+  - market-bot-1

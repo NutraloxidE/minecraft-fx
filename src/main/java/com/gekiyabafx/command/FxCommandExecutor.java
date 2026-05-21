@@ -73,9 +73,10 @@ public final class FxCommandExecutor implements CommandExecutor {
         String sub = args[0].toLowerCase();
 
         switch (sub) {
-            case "login"  -> handleLogin(sender);
-            case "admin"  -> handleAdmin(sender);
-            case "reload" -> handleReload(sender);
+            case "login"     -> handleLogin(sender);
+            case "login-as"  -> handleLoginAs(sender, args);
+            case "admin"     -> handleAdmin(sender);
+            case "reload"    -> handleReload(sender);
             default -> sender.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
                     .append(Component.text("不明なサブコマンドです: " + sub, NamedTextColor.RED)));
         }
@@ -168,6 +169,109 @@ public final class FxCommandExecutor implements CommandExecutor {
         player.sendMessage(
                 Component.text("  クリックでブラウザが開きます。", NamedTextColor.GRAY)
         );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  /fx login-as <serviceAccount>
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * {@code /fx login-as <serviceAccount>} の処理。
+     *
+     * <ol>
+     *   <li>{@code gekiyabafx.admin} 権限を確認する。</li>
+     *   <li>引数 {@code <serviceAccount>} が config.yml の {@code serviceAccounts} リストに
+     *       含まれているか確認する。</li>
+     *   <li>内部ID {@code svc:<id>} に対して {@link PlayerData} が存在しなければ自動作成する。</li>
+     *   <li>プレイヤー用OTPを {@code svc:<id>} に対して発行し、ログインURLを返す。</li>
+     * </ol>
+     *
+     * @param sender コマンド送信者
+     * @param args   コマンド引数（args[0] = "login-as", args[1] = serviceAccount名）
+     */
+    private void handleLoginAs(CommandSender sender, String[] args) {
+        // 権限チェック
+        if (!sender.hasPermission("gekiyabafx.admin")) {
+            sender.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                    .append(Component.text("このコマンドを実行する権限がありません。",
+                            NamedTextColor.RED)));
+            return;
+        }
+
+        // 引数チェック
+        if (args.length < 2 || args[1].isBlank()) {
+            sender.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                    .append(Component.text("使用法: /fx login-as <serviceAccountName>",
+                            NamedTextColor.RED)));
+            return;
+        }
+
+        String svcName = args[1];
+
+        // 許可リストチェック（config.yml の serviceAccounts）
+        java.util.List<String> allowed = plugin.getPluginConfig().getServiceAccounts();
+        if (!allowed.contains(svcName)) {
+            sender.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                    .append(Component.text(
+                            "'" + svcName + "' は許可された Service アカウントではありません。",
+                            NamedTextColor.RED)));
+            sender.sendMessage(Component.text("  許可リスト: " + allowed, NamedTextColor.GRAY));
+            return;
+        }
+
+        // 内部ID: svc:<name>
+        String svcId = "svc:" + svcName;
+        String displayName = "[SERVICE] " + svcName;
+
+        // PlayerData 自動作成（存在しない場合のみ）
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            StorageData data = sm.getData();
+            if (data.getPlayer(svcId) == null) {
+                PlayerData newSvc = new PlayerData(displayName);
+                data.getPlayers().put(svcId, newSvc);
+                sm.markDirty();
+                plugin.getLogger().info("Service アカウントを自動作成しました: " + svcId);
+            }
+        } finally {
+            sm.unlock();
+        }
+
+        // プレイヤー用OTP発行（通常ログインと同じ導線）
+        OtpManager.OtpEntry entry = playerOtpManager.generate(svcId);
+        long expireMinutes = plugin.getPluginConfig().getOtpExpireSeconds() / 60;
+
+        String serverIp = plugin.getPluginConfig().getServerIp();
+        int webPort     = plugin.getPluginConfig().getWebPort();
+        String loginUrl = "http://" + serverIp + ":" + webPort + "/trade?otp=" + entry.getOtp();
+
+        // チャットメッセージ送信
+        sender.sendMessage(
+                Component.text("[GekiyabaFX] ", NamedTextColor.GOLD)
+                        .append(Component.text("Service アカウント ", NamedTextColor.WHITE))
+                        .append(Component.text(svcId, NamedTextColor.AQUA))
+                        .append(Component.text(" のログインURLを生成しました", NamedTextColor.WHITE))
+                        .append(Component.text("（有効期限: " + expireMinutes + "分）", NamedTextColor.GRAY))
+        );
+
+        if (sender instanceof Player) {
+            sender.sendMessage(
+                    Component.text("► ", NamedTextColor.GOLD)
+                            .append(
+                                    Component.text(loginUrl, NamedTextColor.AQUA)
+                                            .decorate(TextDecoration.UNDERLINED)
+                                            .clickEvent(ClickEvent.openUrl(loginUrl))
+                            )
+            );
+            sender.sendMessage(
+                    Component.text("  クリックでブラウザが開きます。", NamedTextColor.GRAY)
+            );
+        } else {
+            sender.sendMessage(
+                    Component.text("► " + loginUrl, NamedTextColor.AQUA)
+            );
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

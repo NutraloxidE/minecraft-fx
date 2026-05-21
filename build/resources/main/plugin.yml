@@ -12,9 +12,10 @@ commands:
   fx:
     description: "GekiyabaFX のメインコマンド。サブコマンドで操作を分岐する。"
     usage: |
-      /<command> login   — ブラウザログイン用のワンタイムURLを発行する
-      /<command> admin   — 管理者ログイン用のワンタイムURLを発行する（要権限）
-      /<command> reload  — config.yml を再読み込みする（要権限）
+      /<command> login            — ブラウザログイン用のワンタイムURLを発行する
+      /<command> login-as <name>  — Service アカウントのログインURLを発行する（要管理者権限）
+      /<command> admin            — 管理者ログイン用のワンタイムURLを発行する（要権限）
+      /<command> reload           — config.yml を再読み込みする（要権限）
     aliases:
       - gekiyabafx
 
