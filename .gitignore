@@ -17,6 +17,12 @@ out/
 frontend/node_modules/
 frontend/dist/
 
+# ビルド出力
+/bin/
+/dist/
+/out/
+
+
 # Paper server (テスト環境 - リポジトリ管理外)
 paper-server/
 
