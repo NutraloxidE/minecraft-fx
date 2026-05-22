@@ -30,6 +30,7 @@ public final class ArbitrageService {
 
     private volatile boolean enabled;
     private volatile String serviceAccount;
+    private volatile int checkIntervalTicks;
 
     private volatile long lastCheckEpochSec = 0L;
     private volatile LastExecution lastExecution;
@@ -47,13 +48,18 @@ public final class ArbitrageService {
         PluginConfig cfg = plugin.getPluginConfig();
         this.enabled = cfg.isArbitrageEnabled();
         this.serviceAccount = cfg.getArbitrageServiceAccount();
+        this.checkIntervalTicks = cfg.getArbitrageCheckIntervalTicks();
         this.arbLogger = new ArbitrageLogger(cfg);
     }
 
     public synchronized void start() {
         stop();
-        int period = plugin.getPluginConfig().getArbitrageCheckIntervalTicks();
-        task = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::runLoopSafe, 0L, period);
+        task = Bukkit.getScheduler().runTaskTimerAsynchronously(
+                plugin,
+                this::runLoopSafe,
+                0L,
+                Math.max(1, checkIntervalTicks)
+        );
     }
 
     public synchronized void stop() {
@@ -71,6 +77,10 @@ public final class ArbitrageService {
         return serviceAccount;
     }
 
+    public int getCheckIntervalTicks() {
+        return checkIntervalTicks;
+    }
+
     public synchronized void setEnabled(boolean enabled) {
         this.enabled = enabled;
     }
@@ -79,9 +89,20 @@ public final class ArbitrageService {
         this.serviceAccount = serviceAccount;
     }
 
-    public synchronized void applyRuntimeConfig(Boolean enabled, String serviceAccount) {
+    public synchronized void setCheckIntervalTicks(int checkIntervalTicks) {
+        if (checkIntervalTicks < 1) {
+            throw new IllegalArgumentException("check_interval_ticks must be >= 1");
+        }
+        this.checkIntervalTicks = checkIntervalTicks;
+        if (task != null) {
+            start();
+        }
+    }
+
+    public synchronized void applyRuntimeConfig(Boolean enabled, String serviceAccount, Integer checkIntervalTicks) {
         if (enabled != null) this.enabled = enabled;
         if (serviceAccount != null && !serviceAccount.isBlank()) this.serviceAccount = serviceAccount;
+        if (checkIntervalTicks != null) setCheckIntervalTicks(checkIntervalTicks);
     }
 
     public List<String> getPairsUnderWatch() {
@@ -98,6 +119,7 @@ public final class ArbitrageService {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("enabled", enabled);
         m.put("service_account", serviceAccount);
+        m.put("check_interval_ticks", checkIntervalTicks);
         m.put("pairs_under_watch", getPairsUnderWatch());
         m.put("last_check", lastCheckEpochSec == 0 ? null : Instant.ofEpochSecond(lastCheckEpochSec).toString());
 
