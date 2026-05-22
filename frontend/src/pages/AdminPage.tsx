@@ -17,10 +17,16 @@ import {
   adminPatchPair,
   adminDeletePair,
   adminFetchServiceAccounts,
+  adminFetchArbitrageStatus,
+  adminToggleArbitrage,
 } from '@/lib/api'
-import { DEBUG_ADMIN_PAIRS, DEBUG_SERVICE_ACCOUNTS } from '@/lib/debugData'
+import {
+  DEBUG_ADMIN_PAIRS,
+  DEBUG_SERVICE_ACCOUNTS,
+  DEBUG_ARBITRAGE_STATUS,
+} from '@/lib/debugData'
 import type { AdminPair, CreatePairRequest } from '@/types/api'
-import type { ServiceAccount } from '@/lib/api'
+import type { ServiceAccount, ArbitrageStatusResponse } from '@/lib/api'
 
 // ─── ペア作成フォーム ──────────────────────────────────────────────────────────
 
@@ -264,6 +270,155 @@ function ServiceAccountBalances({ isDebug }: { isDebug: boolean }) {
   )
 }
 
+// ─── 裁定取引コントロール ─────────────────────────────────────────────────────
+
+function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
+  const [status, setStatus] = useState<ArbitrageStatusResponse | null>(null)
+  const [accounts, setAccounts] = useState<ServiceAccount[]>([])
+  const [selectedAccount, setSelectedAccount] = useState('svc:arbitrage')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setErr(null)
+    try {
+      if (isDebug) {
+        setStatus(DEBUG_ARBITRAGE_STATUS)
+        setAccounts(DEBUG_SERVICE_ACCOUNTS)
+        setSelectedAccount(DEBUG_ARBITRAGE_STATUS.service_account)
+        return
+      }
+
+      const [s, a] = await Promise.all([
+        adminFetchArbitrageStatus(),
+        adminFetchServiceAccounts(),
+      ])
+      setStatus(s)
+      setAccounts(a)
+      setSelectedAccount(s.service_account)
+    } catch (e: unknown) {
+      const apiErr = e as { message?: string }
+      setErr(apiErr.message ?? '裁定取引ステータスの取得に失敗しました')
+    } finally {
+      setLoading(false)
+    }
+  }, [isDebug])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const apply = async (payload: { enabled?: boolean; service_account?: string }) => {
+    if (!status) return
+
+    if (isDebug) {
+      const next: ArbitrageStatusResponse = {
+        ...status,
+        enabled: payload.enabled ?? status.enabled,
+        service_account: payload.service_account ?? status.service_account,
+      }
+      setStatus(next)
+      setSelectedAccount(next.service_account)
+      setMsg({ text: `[DEBUG] 更新: enabled=${next.enabled} service=${next.service_account}`, ok: true })
+      return
+    }
+
+    setSaving(true)
+    setMsg(null)
+    try {
+      const updated = await adminToggleArbitrage(payload)
+      setMsg({ text: `更新しました（enabled=${updated.enabled}）`, ok: true })
+      await load()
+    } catch (e: unknown) {
+      const apiErr = e as { message?: string }
+      setMsg({ text: apiErr.message ?? '更新に失敗しました', ok: false })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <p className="admin-loading">読み込み中...</p>
+  if (err) return <p className="admin-err-msg">{err}</p>
+  if (!status) return <p className="admin-err-msg">状態を読み込めませんでした</p>
+
+  return (
+    <div className="arb-panel">
+      <div className="arb-header">
+        <h3 className="admin-section-title">裁定取引 実行管理</h3>
+        <button className="admin-edit-btn" onClick={load} disabled={saving}>更新</button>
+      </div>
+
+      <div className="arb-state-row">
+        <span className={`arb-badge ${status.enabled ? 'on' : 'off'}`}>
+          {status.enabled ? '実行中' : '停止中'}
+        </span>
+        <span className="arb-meta">監視ペア: {status.pairs_under_watch.join(', ') || 'なし'}</span>
+        <span className="arb-meta">最終チェック: {status.last_check ?? '未実行'}</span>
+      </div>
+
+      <div className="admin-form-row">
+        <label>実行アカウント
+          <select
+            className="admin-input"
+            value={selectedAccount}
+            onChange={(e) => setSelectedAccount(e.target.value)}
+            disabled={saving}
+          >
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>{a.id}</option>
+            ))}
+          </select>
+        </label>
+
+        <div className="arb-actions">
+          <button
+            className="admin-save-btn"
+            disabled={saving}
+            onClick={() => apply({ service_account: selectedAccount })}
+          >
+            設定反映
+          </button>
+          <button
+            className="admin-submit-btn"
+            disabled={saving || status.enabled}
+            onClick={() => apply({ enabled: true, service_account: selectedAccount })}
+          >
+            実行開始
+          </button>
+          <button
+            className="admin-delete-btn"
+            disabled={saving || !status.enabled}
+            onClick={() => apply({ enabled: false })}
+          >
+            停止
+          </button>
+        </div>
+      </div>
+
+      <div className="arb-recent-skips">
+        <h4 className="admin-section-title">直近スキップ理由</h4>
+        {status.recent_skips.length === 0 ? (
+          <p className="admin-loading">スキップ履歴なし</p>
+        ) : (
+          <ul className="pending-list">
+            {status.recent_skips.map((s, idx) => (
+              <li key={`${s.timestamp}-${idx}`} className="pending-with">
+                <span>{s.pair} / {s.reason}</span>
+                <span>{s.timestamp}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {msg && <p className={`admin-msg ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</p>}
+    </div>
+  )
+}
+
 // ─── ペアテーブル ─────────────────────────────────────────────────────────────
 
 function PairTable({ isDebug }: { isDebug: boolean }) {
@@ -352,6 +507,10 @@ export default function AdminPage() {
 
         <section className="admin-section">
           <CreatePairForm onCreated={() => { /* PairTable は内部で reload */ }} isDebug={isDebug} />
+        </section>
+
+        <section className="admin-section">
+          <ArbitrageControlPanel isDebug={isDebug} />
         </section>
 
         <section className="admin-section">

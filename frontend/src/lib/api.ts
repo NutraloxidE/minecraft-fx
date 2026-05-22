@@ -229,3 +229,44 @@ export const adminPatchPair = (id: string, req: PatchPairRequest): Promise<Admin
 /** ペアを削除する */
 export const adminDeletePair = (id: string): Promise<{ id: string; deleted: boolean }> =>
   request('DELETE', `/api/admin/pairs/${encodeURIComponent(id)}`, getAdminToken())
+
+export interface ArbitrageSkipRecord {
+  pair: string
+  reason: string
+  timestamp: string
+}
+
+export interface ArbitrageLastExecution {
+  pair: string
+  timestamp: string
+  status: string
+  order_ids: string[]
+}
+
+export interface ArbitrageStatusResponse {
+  enabled: boolean
+  service_account: string
+  pairs_under_watch: string[]
+  last_check: string | null
+  last_execution: ArbitrageLastExecution | null
+  recent_skips: ArbitrageSkipRecord[]
+}
+
+export interface ArbitrageToggleRequest {
+  enabled?: boolean
+  service_account?: string
+}
+
+export interface ArbitrageToggleResponse {
+  enabled: boolean
+  current_service_account: string
+  timestamp: string
+}
+
+/** 裁定取引の現在状態を取得する */
+export const adminFetchArbitrageStatus = (): Promise<ArbitrageStatusResponse> =>
+  request('GET', '/api/admin/arbitrage/status', getAdminToken())
+
+/** 裁定取引の実行ON/OFF・サービスアカウントを更新する */
+export const adminToggleArbitrage = (req: ArbitrageToggleRequest): Promise<ArbitrageToggleResponse> =>
+  request('PATCH', '/api/admin/arbitrage/toggle', getAdminToken(), req)

@@ -1162,6 +1162,58 @@ code {
 .admin-loading { font-size: 0.85rem; color: var(--text); padding: 1rem 0; }
 .admin-err-msg { font-size: 0.85rem; color: #e05c5c; }
 
+/* ─── 裁定取引コントロール ─────────────────────────────────── */
+.arb-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.arb-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.arb-state-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.arb-badge {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.arb-badge.on {
+  background: rgba(76, 175, 130, 0.2);
+  color: #4caf82;
+}
+
+.arb-badge.off {
+  background: rgba(224, 92, 92, 0.2);
+  color: #e05c5c;
+}
+
+.arb-meta {
+  font-size: 0.78rem;
+  color: var(--text);
+}
+
+.arb-actions {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.arb-recent-skips {
+  margin-top: 0.4rem;
+}
+
 /* ─── サービスアカウント残高 ────────────────────────────────── */
 .svc-balances { padding: 0.5rem 0; }
 .svc-balances-header {

@@ -12,7 +12,7 @@ import type {
   Execution,
   PlayerStateResponse,
 } from '@/types/api'
-import type { ServiceAccount } from '@/lib/api'
+import type { ServiceAccount, ArbitrageStatusResponse } from '@/lib/api'
 
 // ─── ペア一覧 ──────────────────────────────────────────────────────────────────
 
@@ -183,7 +183,7 @@ export const DEBUG_ADMIN_PAIRS: AdminPair[] = [
 export const DEBUG_SERVICE_ACCOUNTS: ServiceAccount[] = [
   {
     name: 'treasury-fee',
-    id: 'treasury-fee',
+    id: 'svc:treasury-fee',
     hot_storage: {
       emerald: '1234.5600',
       diamond: '98.0000',
@@ -191,7 +191,7 @@ export const DEBUG_SERVICE_ACCOUNTS: ServiceAccount[] = [
   },
   {
     name: 'intervention-main',
-    id: 'intervention-main',
+    id: 'svc:intervention-main',
     hot_storage: {
       emerald: '5000.0000',
       gold: '300.0000',
@@ -199,11 +199,34 @@ export const DEBUG_SERVICE_ACCOUNTS: ServiceAccount[] = [
   },
   {
     name: 'market-bot-1',
-    id: 'market-bot-1',
+    id: 'svc:market-bot-1',
     hot_storage: {
       diamond: '42.0000',
       emerald: '850.0000',
       gold: '120.0000',
     },
   },
+  {
+    name: 'arbitrage',
+    id: 'svc:arbitrage',
+    hot_storage: {
+      emerald: '3000.0000',
+      diamond: '25.0000',
+    },
+  },
 ]
+
+export const DEBUG_ARBITRAGE_STATUS: ArbitrageStatusResponse = {
+  enabled: false,
+  service_account: 'svc:arbitrage',
+  pairs_under_watch: ['DIAMOND/EMERALD', 'GOLD/EMERALD'],
+  last_check: null,
+  last_execution: null,
+  recent_skips: [
+    {
+      pair: 'DIAMOND/EMERALD',
+      reason: 'low_spread',
+      timestamp: new Date(Date.now() - 60_000).toISOString(),
+    },
+  ],
+}
