@@ -219,6 +219,7 @@ export const DEBUG_SERVICE_ACCOUNTS: ServiceAccount[] = [
 export const DEBUG_ARBITRAGE_STATUS: ArbitrageStatusResponse = {
   enabled: false,
   service_account: 'svc:arbitrage',
+  check_interval_ticks: 300,
   pairs_under_watch: ['DIAMOND/EMERALD', 'GOLD/EMERALD'],
   last_check: null,
   last_execution: null,
