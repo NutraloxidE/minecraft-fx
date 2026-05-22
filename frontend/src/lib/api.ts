@@ -246,6 +246,7 @@ export interface ArbitrageLastExecution {
 export interface ArbitrageStatusResponse {
   enabled: boolean
   service_account: string
+  check_interval_ticks: number
   pairs_under_watch: string[]
   last_check: string | null
   last_execution: ArbitrageLastExecution | null
@@ -255,11 +256,13 @@ export interface ArbitrageStatusResponse {
 export interface ArbitrageToggleRequest {
   enabled?: boolean
   service_account?: string
+  check_interval_ticks?: number
 }
 
 export interface ArbitrageToggleResponse {
   enabled: boolean
   current_service_account: string
+  current_check_interval_ticks: number
   timestamp: string
 }
 
