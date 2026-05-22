@@ -32,3 +32,4 @@ Thumbs.db
 /.gradle
 
 build-log.txt
+*.class
