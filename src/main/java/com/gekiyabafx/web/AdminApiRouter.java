@@ -403,6 +403,17 @@ public final class AdminApiRouter {
         return defaultVal;
     }
 
+    private static Integer getInt(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        if (v == null) return null;
+        if (v instanceof Number n) return n.intValue();
+        try {
+            return Integer.parseInt(v.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     private static BigDecimal parseBigDecimal(Map<String, Object> map, String key, BigDecimal defaultVal) {
         Object v = map.get(key);
         if (v == null) return defaultVal;
@@ -463,6 +474,15 @@ public final class AdminApiRouter {
             enabled = getBoolean(body, "enabled", false);
         }
 
+        Integer checkIntervalTicks = null;
+        if (body.containsKey("check_interval_ticks")) {
+            checkIntervalTicks = getInt(body, "check_interval_ticks");
+            if (checkIntervalTicks == null || checkIntervalTicks < 1) {
+                ctx.status(400).json(Map.of("error", "invalid_check_interval_ticks"));
+                return;
+            }
+        }
+
         String serviceAccount = getString(body, "service_account");
         if (serviceAccount != null && !serviceAccount.isBlank()) {
             if (!serviceAccount.startsWith("svc:")) {
@@ -476,15 +496,17 @@ public final class AdminApiRouter {
             }
         }
 
-        arbitrageService.applyRuntimeConfig(enabled, serviceAccount);
+            arbitrageService.applyRuntimeConfig(enabled, serviceAccount, checkIntervalTicks);
 
         plugin.getConfig().set("arbitrage.enabled", arbitrageService.isEnabled());
         plugin.getConfig().set("arbitrage.service_account", arbitrageService.getServiceAccount());
+            plugin.getConfig().set("arbitrage.check_interval_ticks", arbitrageService.getCheckIntervalTicks());
         plugin.saveConfig();
 
         ctx.status(200).json(Map.of(
                 "enabled", arbitrageService.isEnabled(),
                 "current_service_account", arbitrageService.getServiceAccount(),
+                "current_check_interval_ticks", arbitrageService.getCheckIntervalTicks(),
                 "timestamp", java.time.Instant.now().toString()
         ));
     }
