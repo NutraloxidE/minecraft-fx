@@ -276,10 +276,16 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
   const [status, setStatus] = useState<ArbitrageStatusResponse | null>(null)
   const [accounts, setAccounts] = useState<ServiceAccount[]>([])
   const [selectedAccount, setSelectedAccount] = useState('svc:arbitrage')
+  const [intervalSeconds, setIntervalSeconds] = useState('15')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [err, setErr] = useState<string | null>(null)
+
+  const syncLocalControls = useCallback((nextStatus: ArbitrageStatusResponse) => {
+    setSelectedAccount(nextStatus.service_account)
+    setIntervalSeconds(String(Math.max(1, Math.round(nextStatus.check_interval_ticks / 20))))
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -288,7 +294,7 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
       if (isDebug) {
         setStatus(DEBUG_ARBITRAGE_STATUS)
         setAccounts(DEBUG_SERVICE_ACCOUNTS)
-        setSelectedAccount(DEBUG_ARBITRAGE_STATUS.service_account)
+        syncLocalControls(DEBUG_ARBITRAGE_STATUS)
         return
       }
 
@@ -298,14 +304,14 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
       ])
       setStatus(s)
       setAccounts(a)
-      setSelectedAccount(s.service_account)
+      syncLocalControls(s)
     } catch (e: unknown) {
       const apiErr = e as { message?: string }
       setErr(apiErr.message ?? '裁定取引ステータスの取得に失敗しました')
     } finally {
       setLoading(false)
     }
-  }, [isDebug])
+  }, [isDebug, syncLocalControls])
 
   useEffect(() => {
     load()
@@ -314,23 +320,41 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
   const apply = async (payload: { enabled?: boolean; service_account?: string }) => {
     if (!status) return
 
+    const seconds = Number(intervalSeconds)
+    if (!Number.isFinite(seconds) || !Number.isInteger(seconds) || seconds < 1) {
+      setMsg({ text: '監視間隔は1以上の整数秒で入力してください', ok: false })
+      return
+    }
+
+    const request = {
+      ...payload,
+      check_interval_ticks: seconds * 20,
+    }
+
     if (isDebug) {
       const next: ArbitrageStatusResponse = {
         ...status,
-        enabled: payload.enabled ?? status.enabled,
-        service_account: payload.service_account ?? status.service_account,
+        enabled: request.enabled ?? status.enabled,
+        service_account: request.service_account ?? status.service_account,
+        check_interval_ticks: request.check_interval_ticks,
       }
       setStatus(next)
-      setSelectedAccount(next.service_account)
-      setMsg({ text: `[DEBUG] 更新: enabled=${next.enabled} service=${next.service_account}`, ok: true })
+      syncLocalControls(next)
+      setMsg({
+        text: `[DEBUG] 更新: enabled=${next.enabled} service=${next.service_account} interval=${Math.round(next.check_interval_ticks / 20)}秒`,
+        ok: true,
+      })
       return
     }
 
     setSaving(true)
     setMsg(null)
     try {
-      const updated = await adminToggleArbitrage(payload)
-      setMsg({ text: `更新しました（enabled=${updated.enabled}）`, ok: true })
+      const updated = await adminToggleArbitrage(request)
+      setMsg({
+        text: `更新しました（enabled=${updated.enabled}, interval=${Math.round(updated.current_check_interval_ticks / 20)}秒）`,
+        ok: true,
+      })
       await load()
     } catch (e: unknown) {
       const apiErr = e as { message?: string }
@@ -356,6 +380,7 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
           {status.enabled ? '実行中' : '停止中'}
         </span>
         <span className="arb-meta">監視ペア: {status.pairs_under_watch.join(', ') || 'なし'}</span>
+        <span className="arb-meta">監視間隔: {Math.max(1, Math.round(status.check_interval_ticks / 20))}秒</span>
         <span className="arb-meta">最終チェック: {status.last_check ?? '未実行'}</span>
       </div>
 
@@ -371,6 +396,18 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
               <option key={a.id} value={a.id}>{a.id}</option>
             ))}
           </select>
+        </label>
+
+        <label>監視間隔（秒）
+          <input
+            className="admin-input"
+            type="number"
+            min="1"
+            step="1"
+            value={intervalSeconds}
+            onChange={(e) => setIntervalSeconds(e.target.value)}
+            disabled={saving}
+          />
         </label>
 
         <div className="arb-actions">
