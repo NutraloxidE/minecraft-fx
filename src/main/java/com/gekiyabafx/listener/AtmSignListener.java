@@ -47,7 +47,7 @@ public final class AtmSignListener implements Listener {
     private static final String OCCUPIED_MARKER_TAG = "atm-occupied-marker";
     private static final int ATM_BLOCK_SCAN_RADIUS = 3;
     private static final int REQUIRED_MATCHING_BLOCKS = 11;
-    private static final int FX_SIGN_EXCLUSION_RADIUS = 7;
+    private static final int FX_SIGN_EXCLUSION_RADIUS = 3;
 
     private final GekiyabaFXPlugin plugin;
     private final OtpManager playerOtpManager;
@@ -78,7 +78,7 @@ public final class AtmSignListener implements Listener {
         int sz = signBlock.getZ();
 
         if (hasNearbyFxSign(world, sx, sy, sz)) {
-            player.sendMessage("§c[FX] Cannot place ATM sign: another [FX] sign exists within 7 blocks (XYZ).");
+            player.sendMessage("§c[FX] Cannot place ATM sign: another [FX] sign exists within 3 blocks (XYZ).");
             event.setCancelled(true);
             return;
         }
