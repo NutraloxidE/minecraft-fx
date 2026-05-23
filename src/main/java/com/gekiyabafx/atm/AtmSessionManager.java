@@ -194,6 +194,13 @@ public final class AtmSessionManager {
         return true;
     }
 
+    public boolean clearPendingByIdentity(String identity) {
+        if (identity == null || identity.isBlank()) {
+            return false;
+        }
+        return pendingByOtp.entrySet().removeIf(e -> identity.equals(e.getValue().identity));
+    }
+
     private ActiveAtmSession resolveActiveSession(String token, String identity) {
         if (token != null) {
             String mappedIdentity = identityByToken.get(token);

@@ -44,6 +44,7 @@ import java.util.UUID;
 public final class AtmSignListener implements Listener {
 
     private static final int MAX_ATMS_PER_OWNER = 5;
+    private static final double MAX_DISTANCE_BLOCKS = 3.0;
     private static final long OCCUPY_TIMEOUT_MS = 600_000L;
     private static final String OCCUPIED_MARKER_TAG = "atm-occupied-marker";
     private static final int ATM_BLOCK_SCAN_RADIUS = 3;
@@ -266,9 +267,13 @@ public final class AtmSignListener implements Listener {
         }
 
         Player player = event.getPlayer();
-        boolean cleared = atmSessionManager.clearIfOutOfRange(player.getUniqueId().toString());
-        if (cleared) {
-            clearOccupiedByIdentity(player.getUniqueId().toString(), "OUT_OF_RANGE");
+        String identity = player.getUniqueId().toString();
+        boolean sessionCleared = atmSessionManager.clearIfOutOfRange(identity);
+        boolean occupiedCleared = clearOccupiedIfOutOfRange(identity, event.getTo());
+        if (occupiedCleared) {
+            atmSessionManager.clearPendingByIdentity(identity);
+        }
+        if (sessionCleared || occupiedCleared) {
             player.sendMessage("§e[FX] You moved away from ATM (>3 blocks). ATM session ended.");
         }
     }
@@ -547,6 +552,38 @@ public final class AtmSignListener implements Listener {
             }
             releaseAtmOccupancy(atm, reason);
             sm.markDirty();
+        } finally {
+            sm.unlock();
+        }
+    }
+
+    private boolean clearOccupiedIfOutOfRange(String identity, Location currentLocation) {
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            AtmData atm = findOccupiedAtmByIdentity(sm, identity);
+            if (atm == null) {
+                return false;
+            }
+
+            Location signLoc = getSignLocation(atm);
+            boolean outOfRange = signLoc == null || currentLocation == null || currentLocation.getWorld() == null;
+            if (!outOfRange) {
+                Location center = signLoc.clone().add(0.5, 0.5, 0.5);
+                if (center.getWorld() == null || !center.getWorld().equals(currentLocation.getWorld())) {
+                    outOfRange = true;
+                } else {
+                    outOfRange = currentLocation.distance(center) > MAX_DISTANCE_BLOCKS;
+                }
+            }
+
+            if (!outOfRange) {
+                return false;
+            }
+
+            releaseAtmOccupancy(atm, "OUT_OF_RANGE");
+            sm.markDirty();
+            return true;
         } finally {
             sm.unlock();
         }
