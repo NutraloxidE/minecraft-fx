@@ -26,6 +26,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
@@ -279,6 +280,43 @@ public final class AtmSignListener implements Listener {
         clearOccupiedByIdentity(identity, "PLAYER_QUIT");
     }
 
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        Block block = event.getBlock();
+        if (!(block.getState() instanceof Sign)) {
+            return;
+        }
+
+        String line1 = ((Sign) block.getState()).getLine(0);
+        if (line1 == null || !"[FX]".equalsIgnoreCase(line1.trim())) {
+            return;
+        }
+
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            AtmData atm = sm.getAtmBySignLocation(block.getWorld().getName(), block.getX(), block.getY(), block.getZ());
+            if (atm == null) {
+                return;
+            }
+
+            String occupiedBy = atm.getOccupiedBy();
+            if (occupiedBy != null) {
+                atmSessionManager.clearSession(occupiedBy);
+            }
+
+            atm.setOccupied(false);
+            atm.setOccupiedBy(null);
+            atm.setOccupiedSince(0L);
+            atm.setStatus("inactive");
+            updateAtmSignStatus(atm, false);
+            sm.markDirty();
+            logAtmEvent("RELEASE", atm.getId(), occupiedBy, "SIGN_BROKEN");
+        } finally {
+            sm.unlock();
+        }
+    }
+
     public void releaseForIdentity(String identity, String reason) {
         if (identity == null || identity.isBlank()) {
             return;
@@ -509,7 +547,7 @@ public final class AtmSignListener implements Listener {
     private static void createOccupiedMarker(Location signLoc, String atmId) {
         removeOccupiedMarker(signLoc, atmId);
 
-        Location markerLoc = signLoc.clone().add(0, 1.5, 0);
+        Location markerLoc = signLoc.clone().add(0.5, 1.35, 0.5);
         ArmorStand stand = (ArmorStand) signLoc.getWorld().spawnEntity(markerLoc, EntityType.ARMOR_STAND);
         stand.setCustomName("§c[OCCUPIED]");
         stand.setCustomNameVisible(true);
