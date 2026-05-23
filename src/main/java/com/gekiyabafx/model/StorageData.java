@@ -26,19 +26,25 @@ public final class StorageData {
      */
     private Map<String, PlayerData> players;
 
+    /** 全ATMのデータ。 */
+    private AtmRegistry atmRegistry;
+
     /** GSON デシリアライズ用のデフォルトコンストラクタ。マップを空で初期化する。 */
     public StorageData() {
         this.pairs   = new LinkedHashMap<>();
         this.players = new LinkedHashMap<>();
+        this.atmRegistry = new AtmRegistry();
     }
 
     // ─── ゲッター / セッター ──────────────────────────────────────────────────
 
     public Map<String, Pair> getPairs()           { return pairs; }
     public Map<String, PlayerData> getPlayers()   { return players; }
+    public AtmRegistry getAtmRegistry()           { return atmRegistry; }
 
     public void setPairs(Map<String, Pair> pairs)         { this.pairs = pairs; }
     public void setPlayers(Map<String, PlayerData> players) { this.players = players; }
+    public void setAtmRegistry(AtmRegistry atmRegistry)   { this.atmRegistry = atmRegistry; }
 
     // ─── ユーティリティ ────────────────────────────────────────────────────────
 

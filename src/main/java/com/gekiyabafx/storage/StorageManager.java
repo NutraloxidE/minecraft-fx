@@ -1,6 +1,8 @@
 package com.gekiyabafx.storage;
 
 import com.gekiyabafx.model.StorageData;
+import com.gekiyabafx.model.AtmData;
+import com.gekiyabafx.model.AtmRegistry;
 
 import java.io.File;
 import java.io.IOException;
@@ -160,6 +162,18 @@ public final class StorageManager {
      */
     public StorageData getData() {
         return data;
+    }
+
+    public AtmRegistry getAtmRegistry() {
+        return data.getAtmRegistry();
+    }
+
+    public void registerAtm(AtmData atmData) {
+        data.getAtmRegistry().register(atmData);
+    }
+
+    public AtmData getAtmBySignLocation(String world, int x, int y, int z) {
+        return data.getAtmRegistry().getBySignLocation(world, x, y, z);
     }
 
     // ─── ダーティフラグ / 非同期書き込み ──────────────────────────────────────

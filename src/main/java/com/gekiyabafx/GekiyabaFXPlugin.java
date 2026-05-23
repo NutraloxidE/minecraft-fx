@@ -1,10 +1,12 @@
 package com.gekiyabafx;
 
 import com.gekiyabafx.arbitrage.ArbitrageService;
+import com.gekiyabafx.atm.AtmSessionManager;
 import com.gekiyabafx.auth.OtpManager;
 import com.gekiyabafx.auth.SessionManager;
 import com.gekiyabafx.command.FxCommandExecutor;
 import com.gekiyabafx.config.PluginConfig;
+import com.gekiyabafx.listener.AtmSignListener;
 import com.gekiyabafx.listener.PlayerJoinListener;
 import com.gekiyabafx.storage.ExecutionRepository;
 import com.gekiyabafx.storage.H2ExecutionRepository;
@@ -44,6 +46,9 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
     /** プレイヤー用セッションマネージャー。Step 11 の認証エンドポイントから参照する。 */
     private SessionManager playerSessionManager;
+
+    /** ATM 起点 OTP と Web セッションを紐付けるマネージャー。 */
+    private AtmSessionManager atmSessionManager;
 
     /** 管理者用セッションマネージャー。Step 11 の認証エンドポイントから参照する。 */
     private SessionManager adminSessionManager;
@@ -105,6 +110,7 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
         adminOtpManager     = new OtpManager(pluginConfig.getOtpExpireSeconds());
         playerSessionManager = new SessionManager(pluginConfig.getSessionExpireSeconds());
         adminSessionManager  = new SessionManager(pluginConfig.getSessionExpireSeconds());
+        atmSessionManager    = new AtmSessionManager();
 
         // ⑤ /fx コマンドに FxCommandExecutor を登録する
         FxCommandExecutor executor = new FxCommandExecutor(this, playerOtpManager, adminOtpManager);
@@ -117,6 +123,10 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
         // ⑦ PlayerJoinListener を登録する（pending_deposit 回収・pending_withdraw 付与）
         getServer().getPluginManager().registerEvents(new PlayerJoinListener(this), this);
+        getServer().getPluginManager().registerEvents(
+            new AtmSignListener(this, playerOtpManager, atmSessionManager),
+            this
+        );
 
         // ⑧ Javalin Web サーバーを起動する（静的ファイル配信・SPA フォールバック・CORS）
         webServer = new WebServer(this);
@@ -127,7 +137,8 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
                 playerOtpManager,
                 adminOtpManager,
                 playerSessionManager,
-                adminSessionManager
+            adminSessionManager,
+            atmSessionManager
         ).register(webServer.getApp());
 
         // ⑩ 公開 API エンドポイントを登録する（GET /api/pairs ・ /api/orderbook ・ /api/executions）
@@ -139,7 +150,7 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
         // ⑯ 入出金 API エンドポイントを登録する
         //    POST /api/deposit ・ POST /api/withdraw
-        new DepositWithdrawRouter(this, playerSessionManager).register(webServer.getApp());
+        new DepositWithdrawRouter(this, playerSessionManager, atmSessionManager).register(webServer.getApp());
 
         // ⑰ 管理者 API エンドポイントを登録する
         //    GET|POST /api/admin/pairs ・ PATCH|DELETE /api/admin/pairs/:id
@@ -257,6 +268,10 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
      */
     public SessionManager getAdminSessionManager() {
         return adminSessionManager;
+    }
+
+    public AtmSessionManager getAtmSessionManager() {
+        return atmSessionManager;
     }
 
     public ArbitrageService getArbitrageService() {

@@ -1,0 +1,283 @@
+package com.gekiyabafx.listener;
+
+import com.gekiyabafx.GekiyabaFXPlugin;
+import com.gekiyabafx.atm.AtmSessionManager;
+import com.gekiyabafx.auth.OtpManager;
+import com.gekiyabafx.model.AtmData;
+import com.gekiyabafx.model.PlayerData;
+import com.gekiyabafx.model.StorageData;
+import com.gekiyabafx.storage.StorageManager;
+import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.block.Sign;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.block.SignChangeEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
+
+import java.util.Map;
+import java.util.Locale;
+import java.util.UUID;
+
+/**
+ * ATM 看板の右クリックと 3 ブロック離脱を処理する。
+ */
+public final class AtmSignListener implements Listener {
+
+    private static final int MAX_ATMS_PER_OWNER = 5;
+
+    private final GekiyabaFXPlugin plugin;
+    private final OtpManager playerOtpManager;
+    private final AtmSessionManager atmSessionManager;
+
+    public AtmSignListener(
+            GekiyabaFXPlugin plugin,
+            OtpManager playerOtpManager,
+            AtmSessionManager atmSessionManager
+    ) {
+        this.plugin = plugin;
+        this.playerOtpManager = playerOtpManager;
+        this.atmSessionManager = atmSessionManager;
+    }
+
+    @EventHandler
+    public void onSignChange(SignChangeEvent event) {
+        String line1 = event.getLine(0);
+        if (line1 == null || !"[FX]".equalsIgnoreCase(line1.trim())) {
+            return;
+        }
+
+        Player player = event.getPlayer();
+        Block signBlock = event.getBlock();
+        World world = signBlock.getWorld();
+        int sx = signBlock.getX();
+        int sy = signBlock.getY();
+        int sz = signBlock.getZ();
+
+        if (!validateStructure(world, sx, sy, sz, player)) {
+            event.setCancelled(true);
+            return;
+        }
+
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            String ownerInput = event.getLine(1) == null ? "" : event.getLine(1).trim();
+            if (ownerInput.isEmpty()) {
+                player.sendMessage("§c[FX] Line 2 must contain owner name (player name or svc:account)");
+                event.setCancelled(true);
+                return;
+            }
+
+            StorageData data = sm.getData();
+            ResolvedOwner owner = resolveOwner(ownerInput, data);
+            if (owner == null) {
+                player.sendMessage("§c[FX] Owner not found: " + ownerInput);
+                event.setCancelled(true);
+                return;
+            }
+
+            int currentAtmCount = sm.getAtmRegistry().getByOwner(owner.ownerId).size();
+            if (currentAtmCount >= MAX_ATMS_PER_OWNER) {
+                player.sendMessage("§c[FX] " + owner.ownerName + " has reached max ATMs (" + currentAtmCount + "/" + MAX_ATMS_PER_OWNER + ")");
+                event.setCancelled(true);
+                return;
+            }
+
+            String worldName = world.getName();
+            AtmData existing = sm.getAtmBySignLocation(worldName, sx, sy, sz);
+            if (existing != null && "active".equalsIgnoreCase(existing.getStatus())) {
+                player.sendMessage("§e[FX] This sign is already registered as ATM.");
+                return;
+            }
+
+            Block centerBlock = world.getBlockAt(sx, sy, sz);
+            String grade = determineGrade(centerBlock);
+
+            AtmData atm = new AtmData();
+            atm.setId(UUID.randomUUID().toString());
+            atm.setSignWorld(worldName);
+            atm.setSignX(sx);
+            atm.setSignY(sy);
+            atm.setSignZ(sz);
+            atm.setOwnerId(owner.ownerId);
+            atm.setOwnerName(owner.ownerName);
+            atm.setGrade(grade);
+            atm.setBlockType(centerBlock.getType().name());
+            atm.setStatus("active");
+
+            sm.registerAtm(atm);
+
+            event.setLine(1, owner.ownerName + " ATM");
+            event.setLine(2, "Maker: " + feeLabel(grade, true));
+            event.setLine(3, "Taker: " + feeLabel(grade, false));
+
+            player.sendMessage("§a[FX] ATM created! Grade: " + grade.toUpperCase(Locale.ROOT) + " | Owner: " + owner.ownerName);
+            sm.markDirty();
+        } finally {
+            sm.unlock();
+        }
+    }
+
+    @EventHandler
+    public void onSignRightClick(PlayerInteractEvent event) {
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+
+        Block clicked = event.getClickedBlock();
+        if (clicked == null || !(clicked.getState() instanceof Sign sign)) {
+            return;
+        }
+
+        String line1 = sign.getLine(0);
+        if (!"[FX]".equalsIgnoreCase(line1.trim())) {
+            return;
+        }
+
+        event.setCancelled(true);
+
+        Player player = event.getPlayer();
+        String identity = player.getUniqueId().toString();
+
+        Block b = clicked;
+        String world = b.getWorld().getName();
+        AtmData atm;
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            atm = sm.getAtmBySignLocation(world, b.getX(), b.getY(), b.getZ());
+        } finally {
+            sm.unlock();
+        }
+
+        if (atm == null || !"active".equalsIgnoreCase(atm.getStatus())) {
+            player.sendMessage("§c[FX] This ATM is not registered or inactive.");
+            return;
+        }
+
+        OtpManager.OtpEntry entry = playerOtpManager.generate(identity);
+        String otp = entry.getOtp();
+
+        String grade = atm.getGrade();
+        String atmId = atm.getId();
+
+        atmSessionManager.registerPendingOtp(otp, identity, atmId, clicked.getLocation(), grade);
+
+        String serverIp = plugin.getPluginConfig().getServerIp();
+        int webPort = plugin.getPluginConfig().getWebPort();
+
+        String tradeUrl = "http://" + serverIp + ":" + webPort + "/trade?otp=" + otp;
+
+        player.sendMessage("§a[FX] ATM session started. Grade: " + grade.toUpperCase(Locale.ROOT));
+        player.sendMessage("§7Move within 3 blocks to keep using ATM features.");
+        player.sendMessage("§e[TRADE] " + tradeUrl);
+    }
+
+    @EventHandler
+    public void onPlayerMove(PlayerMoveEvent event) {
+        if (event.getTo() == null || event.getFrom().getBlockX() == event.getTo().getBlockX()
+                && event.getFrom().getBlockY() == event.getTo().getBlockY()
+                && event.getFrom().getBlockZ() == event.getTo().getBlockZ()) {
+            return;
+        }
+
+        Player player = event.getPlayer();
+        boolean cleared = atmSessionManager.clearIfOutOfRange(player.getUniqueId().toString());
+        if (cleared) {
+            player.sendMessage("§e[FX] You moved away from ATM (>3 blocks). ATM session ended.");
+        }
+    }
+
+    private static String determineGrade(Block centerBlock) {
+        Material type = centerBlock.getType();
+        return switch (type) {
+            case IRON_BLOCK -> "iron";
+            case DIAMOND_BLOCK -> "diamond";
+            case NETHERITE_BLOCK -> "netherite";
+            default -> "none";
+        };
+    }
+
+    private static boolean validateStructure(World world, int sx, int sy, int sz, Player player) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                Block b = world.getBlockAt(sx + dx, sy, sz + dz);
+                if (!isSolidBlock(b)) {
+                    player.sendMessage("§c[FX] ATM requires 3x3 solid blocks at Y level. Missing at: X" + dx + " Z" + dz);
+                    return false;
+                }
+            }
+        }
+
+        if (!isSolidBlock(world.getBlockAt(sx, sy + 1, sz))) {
+            player.sendMessage("§c[FX] ATM requires solid block at Y+1 (center)");
+            return false;
+        }
+
+        if (!isSolidBlock(world.getBlockAt(sx, sy + 2, sz))) {
+            player.sendMessage("§c[FX] ATM requires solid block at Y+2 (center)");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static boolean isSolidBlock(Block block) {
+        Material type = block.getType();
+        if (type.isAir()) {
+            return false;
+        }
+        if (type == Material.WATER || type == Material.LAVA) {
+            return false;
+        }
+        return type.isSolid();
+    }
+
+    private static String feeLabel(String grade, boolean maker) {
+        return switch (grade) {
+            case "iron" -> maker ? "0.080%" : "0.120%";
+            case "diamond" -> maker ? "0.050%" : "0.080%";
+            case "netherite" -> maker ? "0.030%" : "0.050%";
+            default -> maker ? "0.100%" : "0.160%";
+        };
+    }
+
+    private static ResolvedOwner resolveOwner(String ownerInput, StorageData data) {
+        Map<String, PlayerData> players = data.getPlayers();
+        if (ownerInput.startsWith("svc:")) {
+            PlayerData svc = players.get(ownerInput);
+            if (svc == null) {
+                return null;
+            }
+            return new ResolvedOwner(ownerInput, ownerInput);
+        }
+
+        for (Map.Entry<String, PlayerData> e : players.entrySet()) {
+            PlayerData pd = e.getValue();
+            if (pd == null || pd.getName() == null) {
+                continue;
+            }
+            if (ownerInput.equalsIgnoreCase(pd.getName())) {
+                return new ResolvedOwner(e.getKey(), pd.getName());
+            }
+        }
+
+        return null;
+    }
+
+    private static final class ResolvedOwner {
+        private final String ownerId;
+        private final String ownerName;
+
+        private ResolvedOwner(String ownerId, String ownerName) {
+            this.ownerId = ownerId;
+            this.ownerName = ownerName;
+        }
+    }
+
+}

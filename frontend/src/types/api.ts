@@ -129,6 +129,13 @@ export interface WithdrawResponse {
   pending?: number
 }
 
+export interface AtmSessionResponse {
+  active: boolean
+  atm_id: string | null
+  grade: string | null
+  max_distance: number
+}
+
 // ─── 管理者 API ───────────────────────────────────────────────────────────────
 
 export interface AdminPair {

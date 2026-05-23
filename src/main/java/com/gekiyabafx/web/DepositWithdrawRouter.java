@@ -1,6 +1,7 @@
 package com.gekiyabafx.web;
 
 import com.gekiyabafx.GekiyabaFXPlugin;
+import com.gekiyabafx.atm.AtmSessionManager;
 import com.gekiyabafx.auth.SessionManager;
 import com.gekiyabafx.model.PlayerData;
 import com.gekiyabafx.storage.StorageManager;
@@ -40,14 +41,31 @@ public final class DepositWithdrawRouter {
 
     private final GekiyabaFXPlugin plugin;
     private final SessionManager   playerSessionManager;
+    private final AtmSessionManager atmSessionManager;
+
+    private static final class AuthContext {
+        private final String token;
+        private final SessionManager.SessionEntry entry;
+
+        private AuthContext(String token, SessionManager.SessionEntry entry) {
+            this.token = token;
+            this.entry = entry;
+        }
+    }
 
     /**
      * @param plugin               プラグインインスタンス（スケジューラ取得用）
      * @param playerSessionManager プレイヤー用 {@link SessionManager}
+     * @param atmSessionManager ATM セッション管理
      */
-    public DepositWithdrawRouter(GekiyabaFXPlugin plugin, SessionManager playerSessionManager) {
+    public DepositWithdrawRouter(
+            GekiyabaFXPlugin plugin,
+            SessionManager playerSessionManager,
+            AtmSessionManager atmSessionManager
+    ) {
         this.plugin               = plugin;
         this.playerSessionManager = playerSessionManager;
+        this.atmSessionManager    = atmSessionManager;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -60,6 +78,7 @@ public final class DepositWithdrawRouter {
      * @param app {@link Javalin} インスタンス
      */
     public void register(Javalin app) {
+        app.get("/api/atm-session", this::handleAtmSession);
         app.post("/api/deposit",  this::handleDeposit);
         app.post("/api/withdraw", this::handleWithdraw);
     }
@@ -68,7 +87,7 @@ public final class DepositWithdrawRouter {
     //  認証ヘルパー
     // ─────────────────────────────────────────────────────────────────────────
 
-    private SessionManager.SessionEntry requireAuth(Context ctx) {
+    private AuthContext requireAuth(Context ctx) {
         String header = ctx.header("Authorization");
         if (header == null || !header.startsWith("Bearer ")) {
             ctx.status(401).json(Map.of("error", "unauthorized"));
@@ -80,7 +99,22 @@ public final class DepositWithdrawRouter {
             ctx.status(401).json(Map.of("error", "unauthorized"));
             return null;
         }
-        return entry;
+        return new AuthContext(token, entry);
+    }
+
+    private void handleAtmSession(Context ctx) {
+        AuthContext auth = requireAuth(ctx);
+        if (auth == null) return;
+
+        AtmSessionManager.AtmSessionState state =
+                atmSessionManager.getStateByToken(auth.token, auth.entry.getIdentity());
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("active", state.isActive());
+        body.put("atm_id", state.getAtmId());
+        body.put("grade", state.getGrade());
+        body.put("max_distance", state.getMaxDistance());
+        ctx.json(body);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -102,10 +136,17 @@ public final class DepositWithdrawRouter {
      * <p>amount は正の整数。アイテム名は Minecraft Material 名（小文字スネークケース）。</p>
      */
     private void handleDeposit(Context ctx) {
-        SessionManager.SessionEntry entry = requireAuth(ctx);
-        if (entry == null) return;
+        AuthContext auth = requireAuth(ctx);
+        if (auth == null) return;
 
-        String playerUuid = entry.getIdentity();
+        try {
+            atmSessionManager.requireActiveInRange(auth.token, auth.entry.getIdentity(), "deposit");
+        } catch (AtmSessionManager.AtmSessionException e) {
+            ctx.status(403).json(Map.of("error", e.getCode(), "message", e.getMessage()));
+            return;
+        }
+
+        String playerUuid = auth.entry.getIdentity();
 
         // ── リクエストパース ──────────────────────────────────────────────────
         Map<String, Object> body = parseBody(ctx);
@@ -240,10 +281,17 @@ public final class DepositWithdrawRouter {
      * インベントリが満杯で入りきらない場合は入った分だけ処理し、残りは {@code pending_withdraw} に積む。</p>
      */
     private void handleWithdraw(Context ctx) {
-        SessionManager.SessionEntry entry = requireAuth(ctx);
-        if (entry == null) return;
+        AuthContext auth = requireAuth(ctx);
+        if (auth == null) return;
 
-        String playerUuid = entry.getIdentity();
+        try {
+            atmSessionManager.requireActiveInRange(auth.token, auth.entry.getIdentity(), "withdraw");
+        } catch (AtmSessionManager.AtmSessionException e) {
+            ctx.status(403).json(Map.of("error", e.getCode(), "message", e.getMessage()));
+            return;
+        }
+
+        String playerUuid = auth.entry.getIdentity();
 
         // ── リクエストパース ──────────────────────────────────────────────────
         Map<String, Object> body = parseBody(ctx);

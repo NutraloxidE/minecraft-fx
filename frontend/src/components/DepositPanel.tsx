@@ -6,9 +6,9 @@
  * - オフライン中に処理された分はログイン時に自動解消される旨をメッセージで案内
  */
 
-import { useState } from 'react'
-import { deposit, withdraw } from '@/lib/api'
-import type { PlayerStateResponse, PairSummary } from '@/types/api'
+import { useEffect, useState } from 'react'
+import { ApiException, deposit, fetchAtmSession, withdraw } from '@/lib/api'
+import type { AtmSessionResponse, PlayerStateResponse, PairSummary } from '@/types/api'
 
 interface Props {
   playerState: PlayerStateResponse | null
@@ -21,6 +21,32 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
   const [amount, setAmount]   = useState('')
   const [msg, setMsg]         = useState<{ text: string; ok: boolean } | null>(null)
   const [busy, setBusy]       = useState(false)
+  const [atmSession, setAtmSession] = useState<AtmSessionResponse | null>(null)
+  const [atmLoading, setAtmLoading] = useState(true)
+
+  useEffect(() => {
+    let mounted = true
+    setAtmLoading(true)
+    fetchAtmSession()
+      .then((s) => {
+        if (!mounted) return
+        setAtmSession(s)
+      })
+      .catch(() => {
+        if (!mounted) return
+        setAtmSession({ active: false, atm_id: null, grade: null, max_distance: 3 })
+      })
+      .finally(() => {
+        if (!mounted) return
+        setAtmLoading(false)
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [playerState?.uuid])
+
+  const isLocked = atmLoading || !atmSession?.active
 
   const validate = (): number | null => {
     const n = parseInt(amount, 10)
@@ -30,6 +56,10 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
   }
 
   const handleDeposit = async () => {
+    if (isLocked) {
+      setMsg({ text: 'ATMの近くで右クリックしてから利用してください（3ブロック以内）', ok: false })
+      return
+    }
     const n = validate(); if (n === null) return
     setBusy(true); setMsg(null)
     try {
@@ -41,14 +71,23 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
       }
       onDone()
     } catch (e: unknown) {
-      const err = e as { message?: string }
-      setMsg({ text: err.message ?? '入金に失敗しました', ok: false })
+      if (e instanceof ApiException && e.status === 403) {
+        setAtmSession({ active: false, atm_id: null, grade: null, max_distance: 3 })
+        setMsg({ text: 'ATMから3ブロック以内で操作してください。最寄りATMへ移動してください。', ok: false })
+      } else {
+        const err = e as { message?: string }
+        setMsg({ text: err.message ?? '入金に失敗しました', ok: false })
+      }
     } finally {
       setBusy(false)
     }
   }
 
   const handleWithdraw = async () => {
+    if (isLocked) {
+      setMsg({ text: 'ATMの近くで右クリックしてから利用してください（3ブロック以内）', ok: false })
+      return
+    }
     const n = validate(); if (n === null) return
     setBusy(true); setMsg(null)
     try {
@@ -60,8 +99,13 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
       }
       onDone()
     } catch (e: unknown) {
-      const err = e as { message?: string }
-      setMsg({ text: err.message ?? '出金に失敗しました', ok: false })
+      if (e instanceof ApiException && e.status === 403) {
+        setAtmSession({ active: false, atm_id: null, grade: null, max_distance: 3 })
+        setMsg({ text: 'ATMから3ブロック以内で操作してください。最寄りATMへ移動してください。', ok: false })
+      } else {
+        const err = e as { message?: string }
+        setMsg({ text: err.message ?? '出金に失敗しました', ok: false })
+      }
     } finally {
       setBusy(false)
     }
@@ -77,6 +121,17 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
 
       {/* 入力フォーム */}
       <div className="deposit-form">
+        {isLocked && (
+          <div className="deposit-message err" style={{ marginBottom: 8 }}>
+            ATMの近くで右クリックしてから利用してください（3ブロック以内）
+            <div style={{ marginTop: 6 }}>
+              <button className="deposit-btn" type="button" onClick={() => setMsg({ text: 'ATMへ移動して [FX] 看板を右クリックしてください。', ok: false })}>
+                ATMへ行く
+              </button>
+            </div>
+          </div>
+        )}
+
         {pair && (
           <div className="deposit-item-chips">
             {[pair.base, pair.quote].map((itm) => (
@@ -84,7 +139,7 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
                 key={itm}
                 className={`deposit-chip${item === itm ? ' active' : ''}`}
                 onClick={() => setItem(itm)}
-                disabled={busy}
+                disabled={busy || isLocked}
                 type="button"
               >
                 {itm}
@@ -98,7 +153,7 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
             placeholder="アイテム名 (例: diamond)"
             value={item}
             onChange={(e) => setItem(e.target.value)}
-            disabled={busy}
+            disabled={busy || isLocked}
           />
           <input
             className="deposit-input"
@@ -109,10 +164,10 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
             step={1}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            disabled={busy}
+            disabled={busy || isLocked}
           />
-          <button className="deposit-btn"  onClick={handleDeposit}  disabled={busy}>入金</button>
-          <button className="withdraw-btn" onClick={handleWithdraw} disabled={busy}>出金</button>
+          <button className="deposit-btn"  onClick={handleDeposit}  disabled={busy || isLocked}>入金</button>
+          <button className="withdraw-btn" onClick={handleWithdraw} disabled={busy || isLocked}>出金</button>
         </div>
         {msg && (
           <p className={`deposit-message ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</p>

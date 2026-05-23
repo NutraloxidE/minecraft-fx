@@ -1,10 +1,12 @@
 package com.gekiyabafx.web;
 
+import com.gekiyabafx.atm.AtmSessionManager;
 import com.gekiyabafx.auth.OtpManager;
 import com.gekiyabafx.auth.SessionManager;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -44,6 +46,7 @@ public final class AuthRouter {
     private final OtpManager     adminOtpManager;
     private final SessionManager playerSessionManager;
     private final SessionManager adminSessionManager;
+    private final AtmSessionManager atmSessionManager;
 
     /**
      * @param playerOtpManager     プレイヤー用 {@link OtpManager}
@@ -55,12 +58,14 @@ public final class AuthRouter {
             OtpManager     playerOtpManager,
             OtpManager     adminOtpManager,
             SessionManager playerSessionManager,
-            SessionManager adminSessionManager
+            SessionManager adminSessionManager,
+            AtmSessionManager atmSessionManager
     ) {
         this.playerOtpManager     = playerOtpManager;
         this.adminOtpManager      = adminOtpManager;
         this.playerSessionManager = playerSessionManager;
         this.adminSessionManager  = adminSessionManager;
+        this.atmSessionManager    = atmSessionManager;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -95,7 +100,7 @@ public final class AuthRouter {
      * @param ctx Javalin コンテキスト
      */
     private void handlePlayerAuth(Context ctx) {
-        exchangeOtp(ctx, playerOtpManager, playerSessionManager);
+        exchangeOtp(ctx, playerOtpManager, playerSessionManager, atmSessionManager);
     }
 
     /**
@@ -107,7 +112,7 @@ public final class AuthRouter {
      * @param ctx Javalin コンテキスト
      */
     private void handleAdminAuth(Context ctx) {
-        exchangeOtp(ctx, adminOtpManager, adminSessionManager);
+        exchangeOtp(ctx, adminOtpManager, adminSessionManager, null);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -124,7 +129,8 @@ public final class AuthRouter {
     private static void exchangeOtp(
             Context ctx,
             OtpManager otpManager,
-            SessionManager sessionManager
+            SessionManager sessionManager,
+            AtmSessionManager atmSessionManager
     ) {
         // ── リクエストボディのパース ─────────────────────────────────────────
         String otp;
@@ -153,10 +159,23 @@ public final class AuthRouter {
         // ── セッション発行 ───────────────────────────────────────────────────
         SessionManager.SessionEntry session = sessionManager.create(otpEntry.getIdentity());
 
-        ctx.status(200).json(Map.of(
-                "token",      session.getToken(),
-                "identity",   session.getIdentity(),
-                "expires_at", session.getExpiresAt()
-        ));
+        AtmSessionManager.AtmSessionState atmState = AtmSessionManager.AtmSessionState.inactive();
+        if (atmSessionManager != null) {
+            atmState = atmSessionManager.activateByOtp(otp, otpEntry.getIdentity(), session.getToken());
+        }
+
+        Map<String, Object> atmJson = new LinkedHashMap<>();
+        atmJson.put("active", atmState.isActive());
+        atmJson.put("atm_id", atmState.getAtmId());
+        atmJson.put("grade", atmState.getGrade());
+        atmJson.put("max_distance", atmState.getMaxDistance());
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("token", session.getToken());
+        response.put("identity", session.getIdentity());
+        response.put("expires_at", session.getExpiresAt());
+        response.put("atm_session", atmJson);
+
+        ctx.status(200).json(response);
     }
 }

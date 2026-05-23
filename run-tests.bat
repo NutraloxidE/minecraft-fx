@@ -37,4 +37,3 @@ popd
 echo [OK] コンパイル完了
 echo ログ: %BUILD_LOG%
 echo.
-pause

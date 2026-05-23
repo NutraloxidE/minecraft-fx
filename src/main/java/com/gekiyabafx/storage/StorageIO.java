@@ -180,6 +180,12 @@ public final class StorageIO {
         if (data.getPlayers() == null) {
             data.setPlayers(new java.util.LinkedHashMap<>());
         }
+        if (data.getAtmRegistry() == null) {
+            data.setAtmRegistry(new com.gekiyabafx.model.AtmRegistry());
+        }
+        if (data.getAtmRegistry().getAtms() == null) {
+            data.getAtmRegistry().setAtms(new java.util.LinkedHashMap<>());
+        }
 
         // 各ペアのコレクションを補完する
         data.getPairs().forEach((pairId, pair) -> {
@@ -219,6 +225,22 @@ public final class StorageIO {
             }
             if (player.getPendingDeposit() == null) {
                 player.setPendingDeposit(new java.util.HashMap<>());
+            }
+        });
+
+        data.getAtmRegistry().getAtms().forEach((atmId, atm) -> {
+            if (atm == null) return;
+            if (atm.getTotalFeesEarned() == null) {
+                atm.setTotalFeesEarned(new java.util.HashMap<>());
+            }
+            if (atm.getPendingPayout() == null) {
+                atm.setPendingPayout(new java.util.HashMap<>());
+            }
+            if (atm.getStatus() == null) {
+                atm.setStatus("active");
+            }
+            if (atm.getGrade() == null) {
+                atm.setGrade("none");
             }
         });
 

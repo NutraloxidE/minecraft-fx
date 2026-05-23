@@ -1239,19 +1239,28 @@ atm:
 - [ ] `AtmData` クラス実装
 - [ ] `AtmRegistry` クラス実装
 - [ ] `StorageManager.getAtmRegistry()` 追加
+- [ ] `StorageData` に ATM Registry 永続フィールド追加（storage.json 読み書き）
+- [ ] `PluginConfig` に `atm.*` 設定のロード・バリデーション追加
 - [ ] `SignChangeEvent` リスナー実装
 - [ ] `BlockBreakEvent` リスナー実装
 - [ ] `PlayerInteractEvent` リスナー実装
 - [ ] `PlayerMoveEvent` リスナー実装（3ブロック離脱で利用終了）
+- [ ] プラグイン起動時に ATM 関連 Listener / Scheduler を登録
+- [ ] OTP/Session と ATM セッションの紐付け管理追加（生成・失効・強制解除）
 - [ ] `MatchingEngine.match()` に手数料分配ロジック追加
 - [ ] H2 DB に ATM カラム追加
+- [ ] H2 Repository の insert/select を ATM カラム対応へ更新
 - [ ] `/api/atms` エンドポイント実装
 - [ ] `/api/my-atms` エンドポイント実装
 - [ ] `/api/admin/atms` エンドポイント実装
+- [ ] `/api/auth` 応答に ATM セッション情報（任意）を返却
+- [ ] `/api/atm-session` などフロント用セッション状態APIを追加
 - [ ] 入出金APIで ATM セッション必須化（403制御）
-- [ ] フロントエンド `/deposit` `/withdraw` のATM誘導ロック実装
+- [ ] フロントエンド入出金UI（現行 `TradePage` 内 `DepositPanel`）のATM誘導ロック実装
 - [ ] `PayoutScheduler` 実装
 - [ ] `AtmLogger` 実装
+- [ ] セッション失効・ログアウト時の ATM occupied 解放処理
 - [ ] 初期テスト（単一 ATM）
 - [ ] 複数 ATM 同時実行テスト
 - [ ] ATM 破壊時の支払いテスト
+- [ ] 入出金403時のフロント表示テスト（ATM誘導表示）

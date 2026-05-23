@@ -1,4 +1,8 @@
-> Task :compileJava UP-TO-DATE
+Starting a Gradle Daemon (subsequent builds will be faster)
 
-BUILD SUCCESSFUL in 2s
-1 actionable task: 1 up-to-date
+> Task :compileJava
+ノート: 一部の入力ファイルは推奨されないAPIを使用またはオーバーライドしています。
+ノート: 詳細は、-Xlint:deprecationオプションを指定して再コンパイルしてください。
+
+BUILD SUCCESSFUL in 18s
+1 actionable task: 1 executed

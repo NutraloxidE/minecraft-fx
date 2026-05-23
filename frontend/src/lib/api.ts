@@ -26,6 +26,7 @@ import type {
   DepositResponse,
   WithdrawRequest,
   WithdrawResponse,
+  AtmSessionResponse,
   AdminPair,
   CreatePairRequest,
   PatchPairRequest,
@@ -161,6 +162,10 @@ export const deposit = (req: DepositRequest): Promise<DepositResponse> =>
 /** アイテムを引き出す */
 export const withdraw = (req: WithdrawRequest): Promise<WithdrawResponse> =>
   request('POST', '/api/withdraw', getPlayerToken(), req)
+
+/** ATM セッション状態を取得する */
+export const fetchAtmSession = (): Promise<AtmSessionResponse> =>
+  request('GET', '/api/atm-session', getPlayerToken())
 
 export interface ResolveTransferTargetResponse {
   found: boolean
