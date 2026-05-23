@@ -134,6 +134,9 @@ export interface AtmSessionResponse {
   atm_id: string | null
   grade: string | null
   max_distance: number
+  occupied: boolean
+  occupied_atm_id: string | null
+  occupied_grade: string | null
 }
 
 // ─── 管理者 API ───────────────────────────────────────────────────────────────

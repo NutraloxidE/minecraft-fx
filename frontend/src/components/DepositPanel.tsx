@@ -24,6 +24,32 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
   const [atmSession, setAtmSession] = useState<AtmSessionResponse | null>(null)
   const [atmLoading, setAtmLoading] = useState(true)
 
+  const fallbackAtmSession: AtmSessionResponse = {
+    active: false,
+    atm_id: null,
+    grade: null,
+    max_distance: 3,
+    occupied: false,
+    occupied_atm_id: null,
+    occupied_grade: null,
+  }
+
+  const loadAtmSession = () => {
+    setAtmLoading(true)
+    return fetchAtmSession()
+      .then((s) => {
+        setAtmSession(s)
+        return s
+      })
+      .catch(() => {
+        setAtmSession(fallbackAtmSession)
+        return fallbackAtmSession
+      })
+      .finally(() => {
+        setAtmLoading(false)
+      })
+  }
+
   useEffect(() => {
     let mounted = true
     setAtmLoading(true)
@@ -34,7 +60,7 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
       })
       .catch(() => {
         if (!mounted) return
-        setAtmSession({ active: false, atm_id: null, grade: null, max_distance: 3 })
+        setAtmSession(fallbackAtmSession)
       })
       .finally(() => {
         if (!mounted) return
@@ -45,6 +71,19 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
       mounted = false
     }
   }, [playerState?.uuid])
+
+  const handleCheckAtmUsage = async () => {
+    const s = await loadAtmSession()
+    if (s.active) {
+      setMsg({ text: `ATM使用中です（ATM: ${s.atm_id ?? '-'} / グレード: ${s.grade ?? '-'})`, ok: true })
+      return
+    }
+    if (s.occupied) {
+      setMsg({ text: `ATMは占有中です（ATM: ${s.occupied_atm_id ?? '-'}）。リンクを再度開いて認証してください。`, ok: false })
+      return
+    }
+    setMsg({ text: 'ATMを使用していません。ATMで [FX] 看板を右クリックしてから再確認してください。', ok: false })
+  }
 
   const isLocked = atmLoading || !atmSession?.active
 
@@ -72,7 +111,7 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
       onDone()
     } catch (e: unknown) {
       if (e instanceof ApiException && e.status === 403) {
-        setAtmSession({ active: false, atm_id: null, grade: null, max_distance: 3 })
+        setAtmSession(fallbackAtmSession)
         setMsg({ text: 'ATMから3ブロック以内で操作してください。最寄りATMへ移動してください。', ok: false })
       } else {
         const err = e as { message?: string }
@@ -100,7 +139,7 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
       onDone()
     } catch (e: unknown) {
       if (e instanceof ApiException && e.status === 403) {
-        setAtmSession({ active: false, atm_id: null, grade: null, max_distance: 3 })
+        setAtmSession(fallbackAtmSession)
         setMsg({ text: 'ATMから3ブロック以内で操作してください。最寄りATMへ移動してください。', ok: false })
       } else {
         const err = e as { message?: string }
@@ -125,8 +164,8 @@ export default function DepositPanel({ playerState, pair, onDone }: Props) {
           <div className="deposit-message err" style={{ marginBottom: 8 }}>
             ATMの近くで右クリックしてから利用してください（3ブロック以内）
             <div style={{ marginTop: 6 }}>
-              <button className="deposit-btn" type="button" onClick={() => setMsg({ text: 'ATMへ移動して [FX] 看板を右クリックしてください。', ok: false })}>
-                ATMへ行く
+              <button className="deposit-btn" type="button" onClick={handleCheckAtmUsage}>
+                ATMを使用しているかチェック
               </button>
             </div>
           </div>

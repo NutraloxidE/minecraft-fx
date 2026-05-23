@@ -3,6 +3,7 @@ package com.gekiyabafx.web;
 import com.gekiyabafx.GekiyabaFXPlugin;
 import com.gekiyabafx.atm.AtmSessionManager;
 import com.gekiyabafx.auth.SessionManager;
+import com.gekiyabafx.model.AtmData;
 import com.gekiyabafx.model.PlayerData;
 import com.gekiyabafx.storage.StorageManager;
 import io.javalin.Javalin;
@@ -106,14 +107,41 @@ public final class DepositWithdrawRouter {
         AuthContext auth = requireAuth(ctx);
         if (auth == null) return;
 
+        String identity = auth.entry.getIdentity();
         AtmSessionManager.AtmSessionState state =
-                atmSessionManager.getStateByToken(auth.token, auth.entry.getIdentity());
+                atmSessionManager.getStateByToken(auth.token, identity);
+
+        boolean occupied = false;
+        String occupiedAtmId = null;
+        String occupiedGrade = null;
+
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            for (AtmData atm : sm.getAtmRegistry().getAtms().values()) {
+                if (atm == null || !atm.isOccupied()) {
+                    continue;
+                }
+                if (!identity.equals(atm.getOccupiedBy())) {
+                    continue;
+                }
+                occupied = true;
+                occupiedAtmId = atm.getId();
+                occupiedGrade = atm.getGrade();
+                break;
+            }
+        } finally {
+            sm.unlock();
+        }
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("active", state.isActive());
         body.put("atm_id", state.getAtmId());
         body.put("grade", state.getGrade());
         body.put("max_distance", state.getMaxDistance());
+        body.put("occupied", occupied);
+        body.put("occupied_atm_id", occupiedAtmId);
+        body.put("occupied_grade", occupiedGrade);
         ctx.json(body);
     }
 
