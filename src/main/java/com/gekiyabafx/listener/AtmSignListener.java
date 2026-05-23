@@ -7,11 +7,18 @@ import com.gekiyabafx.model.AtmData;
 import com.gekiyabafx.model.PlayerData;
 import com.gekiyabafx.model.StorageData;
 import com.gekiyabafx.storage.StorageManager;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Material;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.Sign;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.Directional;
+import org.bukkit.block.data.Rotatable;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
@@ -23,6 +30,7 @@ import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.block.BlockFace;
 
 import java.util.Collection;
 import java.util.Map;
@@ -37,6 +45,9 @@ public final class AtmSignListener implements Listener {
     private static final int MAX_ATMS_PER_OWNER = 5;
     private static final long OCCUPY_TIMEOUT_MS = 600_000L;
     private static final String OCCUPIED_MARKER_TAG = "atm-occupied-marker";
+    private static final int ATM_BLOCK_SCAN_RADIUS = 3;
+    private static final int REQUIRED_MATCHING_BLOCKS = 11;
+    private static final int FX_SIGN_EXCLUSION_RADIUS = 7;
 
     private final GekiyabaFXPlugin plugin;
     private final OtpManager playerOtpManager;
@@ -66,7 +77,27 @@ public final class AtmSignListener implements Listener {
         int sy = signBlock.getY();
         int sz = signBlock.getZ();
 
-        if (!validateStructure(world, sx, sy, sz, player)) {
+        if (hasNearbyFxSign(world, sx, sy, sz)) {
+            player.sendMessage("§c[FX] Cannot place ATM sign: another [FX] sign exists within 7 blocks (XYZ).");
+            event.setCancelled(true);
+            return;
+        }
+
+        Block atmBaseBlock = getAtmBaseBlock(signBlock);
+        if (atmBaseBlock == null) {
+            player.sendMessage("§c[FX] Unable to detect ATM base block behind sign.");
+            event.setCancelled(true);
+            return;
+        }
+
+        String grade = determineGrade(atmBaseBlock);
+        if ("none".equals(grade)) {
+            player.sendMessage("§c[FX] Block behind sign must be IRON_BLOCK, DIAMOND_BLOCK, or NETHERITE_BLOCK.");
+            event.setCancelled(true);
+            return;
+        }
+
+        if (!validateStructure(world, sx, sy, sz, atmBaseBlock.getType(), player)) {
             event.setCancelled(true);
             return;
         }
@@ -103,9 +134,6 @@ public final class AtmSignListener implements Listener {
                 return;
             }
 
-            Block centerBlock = world.getBlockAt(sx, sy, sz);
-            String grade = determineGrade(centerBlock);
-
             AtmData atm = new AtmData();
             atm.setId(UUID.randomUUID().toString());
             atm.setSignWorld(worldName);
@@ -115,7 +143,7 @@ public final class AtmSignListener implements Listener {
             atm.setOwnerId(owner.ownerId);
             atm.setOwnerName(owner.ownerName);
             atm.setGrade(grade);
-            atm.setBlockType(centerBlock.getType().name());
+            atm.setBlockType(atmBaseBlock.getType().name());
             atm.setStatus("active");
 
             sm.registerAtm(atm);
@@ -204,12 +232,28 @@ public final class AtmSignListener implements Listener {
 
         String serverIp = plugin.getPluginConfig().getServerIp();
         int webPort = plugin.getPluginConfig().getWebPort();
+        long expireMinutes = plugin.getPluginConfig().getOtpExpireSeconds() / 60;
 
         String tradeUrl = "http://" + serverIp + ":" + webPort + "/trade?otp=" + otp;
 
         player.sendMessage("§a[FX] ATM session started. Grade: " + grade.toUpperCase(Locale.ROOT));
         player.sendMessage("§7Move within 3 blocks to keep using ATM features.");
-        player.sendMessage("§e[TRADE] " + tradeUrl);
+        player.sendMessage(
+            Component.text("[GekiyabaFX] ", NamedTextColor.GOLD)
+                .append(Component.text("ログインURLを生成しました", NamedTextColor.WHITE))
+                .append(Component.text("（有効期限: " + expireMinutes + "分）", NamedTextColor.GRAY))
+        );
+        player.sendMessage(
+            Component.text("► ", NamedTextColor.GOLD)
+                .append(
+                    Component.text(tradeUrl, NamedTextColor.AQUA)
+                        .decorate(TextDecoration.UNDERLINED)
+                        .clickEvent(ClickEvent.openUrl(tradeUrl))
+                )
+        );
+        player.sendMessage(
+            Component.text("  クリックでブラウザが開きます。", NamedTextColor.GRAY)
+        );
     }
 
     @EventHandler
@@ -282,28 +326,64 @@ public final class AtmSignListener implements Listener {
         };
     }
 
-    private static boolean validateStructure(World world, int sx, int sy, int sz, Player player) {
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dz = -1; dz <= 1; dz++) {
-                Block b = world.getBlockAt(sx + dx, sy, sz + dz);
-                if (!isSolidBlock(b)) {
-                    player.sendMessage("§c[FX] ATM requires 3x3 solid blocks at Y level. Missing at: X" + dx + " Z" + dz);
-                    return false;
+    private static boolean validateStructure(World world, int sx, int sy, int sz, Material targetType, Player player) {
+        int matchCount = 0;
+        for (int dx = -ATM_BLOCK_SCAN_RADIUS; dx <= ATM_BLOCK_SCAN_RADIUS; dx++) {
+            for (int dy = -ATM_BLOCK_SCAN_RADIUS; dy <= ATM_BLOCK_SCAN_RADIUS; dy++) {
+                for (int dz = -ATM_BLOCK_SCAN_RADIUS; dz <= ATM_BLOCK_SCAN_RADIUS; dz++) {
+                    Block b = world.getBlockAt(sx + dx, sy + dy, sz + dz);
+                    if (b.getType() == targetType) {
+                        matchCount++;
+                    }
                 }
             }
         }
 
-        if (!isSolidBlock(world.getBlockAt(sx, sy + 1, sz))) {
-            player.sendMessage("§c[FX] ATM requires solid block at Y+1 (center)");
-            return false;
-        }
-
-        if (!isSolidBlock(world.getBlockAt(sx, sy + 2, sz))) {
-            player.sendMessage("§c[FX] ATM requires solid block at Y+2 (center)");
+        if (matchCount < REQUIRED_MATCHING_BLOCKS) {
+            player.sendMessage("§c[FX] ATM requires at least " + REQUIRED_MATCHING_BLOCKS
+                    + " matching blocks (" + targetType.name() + ") within 7x7x7 area.");
             return false;
         }
 
         return true;
+    }
+
+    private static Block getAtmBaseBlock(Block signBlock) {
+        BlockData data = signBlock.getBlockData();
+        BlockFace facing = null;
+
+        if (data instanceof Directional directional) {
+            facing = directional.getFacing();
+        } else if (data instanceof Rotatable rotatable) {
+            facing = rotatable.getRotation();
+        }
+
+        if (facing == null) {
+            return null;
+        }
+
+        return signBlock.getRelative(facing.getOppositeFace());
+    }
+
+    private static boolean hasNearbyFxSign(World world, int sx, int sy, int sz) {
+        for (int dx = -FX_SIGN_EXCLUSION_RADIUS; dx <= FX_SIGN_EXCLUSION_RADIUS; dx++) {
+            for (int dy = -FX_SIGN_EXCLUSION_RADIUS; dy <= FX_SIGN_EXCLUSION_RADIUS; dy++) {
+                for (int dz = -FX_SIGN_EXCLUSION_RADIUS; dz <= FX_SIGN_EXCLUSION_RADIUS; dz++) {
+                    if (dx == 0 && dy == 0 && dz == 0) {
+                        continue;
+                    }
+                    Block block = world.getBlockAt(sx + dx, sy + dy, sz + dz);
+                    if (!(block.getState() instanceof Sign nearbySign)) {
+                        continue;
+                    }
+                    String line1 = nearbySign.getLine(0);
+                    if (line1 != null && "[FX]".equalsIgnoreCase(line1.trim())) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private static boolean isSolidBlock(Block block) {
