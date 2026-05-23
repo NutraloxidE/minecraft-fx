@@ -354,6 +354,66 @@ public final class AtmSignListener implements Listener {
         }
     }
 
+    public void releaseAllOccupancyForShutdown() {
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            boolean changed = false;
+            for (AtmData atm : sm.getAtmRegistry().getAtms().values()) {
+                if (atm == null || !atm.isOccupied()) {
+                    continue;
+                }
+                String occupiedBy = atm.getOccupiedBy();
+                releaseAtmOccupancy(atm, "SHUTDOWN");
+                if (occupiedBy != null) {
+                    atmSessionManager.clearSession(occupiedBy);
+                }
+                changed = true;
+            }
+            if (changed) {
+                sm.markDirty();
+            }
+        } finally {
+            sm.unlock();
+        }
+    }
+
+    public int removeAllAtmsForOwner(String ownerId) {
+        if (ownerId == null || ownerId.isBlank()) {
+            return 0;
+        }
+
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            Collection<AtmData> atms = sm.getAtmRegistry().getAllByOwner(ownerId);
+            int removed = 0;
+            for (AtmData atm : atms) {
+                if (atm == null) {
+                    continue;
+                }
+
+                String occupiedBy = atm.getOccupiedBy();
+                if (occupiedBy != null) {
+                    atmSessionManager.clearSession(occupiedBy);
+                }
+
+                updateAtmSignStatus(atm, false);
+                clearAtmSignText(atm);
+                sm.removeAtm(atm.getId());
+                logAtmEvent("RELEASE", atm.getId(), occupiedBy, "COMMAND_REMOVE");
+                removed++;
+            }
+
+            if (removed > 0) {
+                sm.markDirty();
+            }
+            return removed;
+        } finally {
+            sm.unlock();
+        }
+    }
+
     private static String determineGrade(Block centerBlock) {
         Material type = centerBlock.getType();
         return switch (type) {
@@ -531,6 +591,24 @@ public final class AtmSignListener implements Listener {
         } else {
             removeOccupiedMarker(signLoc, atm.getId());
         }
+    }
+
+    private static void clearAtmSignText(AtmData atm) {
+        Location signLoc = getSignLocation(atm);
+        if (signLoc == null || signLoc.getWorld() == null) {
+            return;
+        }
+
+        Block block = signLoc.getBlock();
+        if (!(block.getState() instanceof Sign sign)) {
+            return;
+        }
+
+        sign.setLine(0, "");
+        sign.setLine(1, "");
+        sign.setLine(2, "");
+        sign.setLine(3, "");
+        sign.update(true, false);
     }
 
     private static Location getSignLocation(AtmData atm) {

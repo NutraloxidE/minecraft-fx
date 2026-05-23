@@ -172,6 +172,10 @@ public final class StorageManager {
         data.getAtmRegistry().register(atmData);
     }
 
+    public AtmData removeAtm(String atmId) {
+        return data.getAtmRegistry().remove(atmId);
+    }
+
     public AtmData getAtmBySignLocation(String world, int x, int y, int z) {
         return data.getAtmRegistry().getBySignLocation(world, x, y, z);
     }

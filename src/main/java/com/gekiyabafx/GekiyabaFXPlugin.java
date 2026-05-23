@@ -50,6 +50,9 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
     /** ATM 起点 OTP と Web セッションを紐付けるマネージャー。 */
     private AtmSessionManager atmSessionManager;
 
+    /** ATM 占有状態と看板表示を管理するリスナー。停止時の全解放に使用する。 */
+    private AtmSignListener atmSignListener;
+
     /** 管理者用セッションマネージャー。Step 11 の認証エンドポイントから参照する。 */
     private SessionManager adminSessionManager;
 
@@ -123,7 +126,7 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
         // ⑦ PlayerJoinListener を登録する（pending_deposit 回収・pending_withdraw 付与）
         getServer().getPluginManager().registerEvents(new PlayerJoinListener(this), this);
-        AtmSignListener atmSignListener = new AtmSignListener(this, playerOtpManager, atmSessionManager);
+        atmSignListener = new AtmSignListener(this, playerOtpManager, atmSessionManager);
         getServer().getPluginManager().registerEvents(atmSignListener, this);
         getServer().getScheduler().runTaskTimer(this, atmSignListener::releaseTimedOutOccupancy, 20L * 30L, 20L * 30L);
 
@@ -175,6 +178,10 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
         if (arbitrageService != null) {
             arbitrageService.stop();
+        }
+
+        if (atmSignListener != null) {
+            atmSignListener.releaseAllOccupancyForShutdown();
         }
 
         // StorageManager をシャットダウンし、未書き込みデータを同期フラッシュする
@@ -271,6 +278,10 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
     public AtmSessionManager getAtmSessionManager() {
         return atmSessionManager;
+    }
+
+    public AtmSignListener getAtmSignListener() {
+        return atmSignListener;
     }
 
     public ArbitrageService getArbitrageService() {

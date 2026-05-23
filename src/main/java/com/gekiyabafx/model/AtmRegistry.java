@@ -28,6 +28,10 @@ public final class AtmRegistry {
         atms.put(atmData.getId(), atmData);
     }
 
+    public AtmData remove(String atmId) {
+        return atms.remove(atmId);
+    }
+
     public AtmData getById(String atmId) {
         return atms.get(atmId);
     }
@@ -42,6 +46,19 @@ public final class AtmRegistry {
     }
 
     public List<AtmData> getByOwner(String ownerId) {
+        List<AtmData> result = new ArrayList<>();
+        for (AtmData atm : atms.values()) {
+            if (atm != null
+                    && "active".equalsIgnoreCase(atm.getStatus())
+                    && ownerId != null
+                    && ownerId.equals(atm.getOwnerId())) {
+                result.add(atm);
+            }
+        }
+        return result;
+    }
+
+    public List<AtmData> getAllByOwner(String ownerId) {
         List<AtmData> result = new ArrayList<>();
         for (AtmData atm : atms.values()) {
             if (atm != null && ownerId != null && ownerId.equals(atm.getOwnerId())) {

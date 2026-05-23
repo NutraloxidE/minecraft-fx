@@ -21,6 +21,7 @@ import org.bukkit.entity.Player;
  *
  * <ul>
  *   <li>{@code /fx login} — プレイヤー用OTP発行・ClickEvent送信（Step 7）</li>
+ *   <li>{@code /fx removeatm} — 自分のATMを全停止・削除する</li>
  *   <li>{@code /fx admin} — 管理者用OTP発行（Step 8 で実装）</li>
  *   <li>{@code /fx reload} — config.yml 再読み込み</li>
  * </ul>
@@ -64,9 +65,7 @@ public final class FxCommandExecutor implements CommandExecutor {
         }
 
         if (args.length == 0) {
-            sender.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
-                    .append(Component.text("使用法: /" + label + " <login|admin|reload>",
-                            NamedTextColor.WHITE)));
+            handleHelp(sender, label);
             return true;
         }
 
@@ -74,9 +73,11 @@ public final class FxCommandExecutor implements CommandExecutor {
 
         switch (sub) {
             case "login"     -> handleLogin(sender);
+            case "removeatm" -> handleRemoveAtm(sender, args);
             case "login-as"  -> handleLoginAs(sender, args);
             case "admin"     -> handleAdmin(sender);
             case "reload"    -> handleReload(sender);
+            case "help"      -> handleHelp(sender, label);
             default -> sender.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
                     .append(Component.text("不明なサブコマンドです: " + sub, NamedTextColor.RED)));
         }
@@ -170,6 +171,76 @@ public final class FxCommandExecutor implements CommandExecutor {
                 Component.text("  クリックでブラウザが開きます。", NamedTextColor.GRAY)
         );
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  /fx removeatm
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * {@code /fx removeatm} の処理。
+     *
+     * <ol>
+     *   <li>プレイヤー実行のみ許可する。</li>
+     *   <li>引数 {@code ATM} を確認する。</li>
+     *   <li>実行者の所有するATMを全て停止・削除する。</li>
+     * </ol>
+     */
+    private void handleRemoveAtm(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                    .append(Component.text("このコマンドはゲーム内でのみ使用できます。", NamedTextColor.RED)));
+            return;
+        }
+
+        if (!player.hasPermission("gekiyabafx.login")) {
+            player.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                    .append(Component.text("このコマンドを実行する権限がありません。", NamedTextColor.RED)));
+            return;
+        }
+
+        if (plugin.getAtmSignListener() == null) {
+            player.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                    .append(Component.text("ATM削除機能が初期化されていません。", NamedTextColor.RED)));
+            return;
+        }
+
+        int removed = plugin.getAtmSignListener().removeAllAtmsForOwner(player.getUniqueId().toString());
+        if (removed <= 0) {
+            player.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                    .append(Component.text("あなたが所有するATMは見つかりませんでした。", NamedTextColor.GRAY)));
+            return;
+        }
+
+        player.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                .append(Component.text("ATMを" + removed + "件停止・削除しました。", NamedTextColor.GREEN)));
+    }
+
+        private void handleHelp(CommandSender sender, String label) {
+        sender.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.GOLD)
+            .append(Component.text("利用可能コマンド", NamedTextColor.WHITE)));
+
+            if (sender.hasPermission("gekiyabafx.login")) {
+                sender.sendMessage(Component.text("  /" + label + " login", NamedTextColor.AQUA)
+                    .append(Component.text(" - プレイヤーログインURLを発行", NamedTextColor.GRAY)));
+                sender.sendMessage(Component.text("  /" + label + " removeatm", NamedTextColor.AQUA)
+                    .append(Component.text(" - 自分のATMを全停止・削除", NamedTextColor.GRAY)));
+            }
+
+            if (sender.hasPermission("gekiyabafx.admin")) {
+                sender.sendMessage(Component.text("  /" + label + " login-as <serviceAccountName>", NamedTextColor.AQUA)
+                    .append(Component.text(" - ServiceアカウントでログインURLを発行", NamedTextColor.GRAY)));
+                sender.sendMessage(Component.text("  /" + label + " admin", NamedTextColor.AQUA)
+                    .append(Component.text(" - 管理者ログインURLを発行", NamedTextColor.GRAY)));
+            }
+
+            if (sender.hasPermission("gekiyabafx.reload")) {
+                sender.sendMessage(Component.text("  /" + label + " reload", NamedTextColor.AQUA)
+                    .append(Component.text(" - config.yml を再読み込み", NamedTextColor.GRAY)));
+            }
+
+        sender.sendMessage(Component.text("  /" + label + " help", NamedTextColor.AQUA)
+            .append(Component.text(" - このヘルプを表示", NamedTextColor.GRAY)));
+        }
 
     // ─────────────────────────────────────────────────────────────────────────
     //  /fx login-as <serviceAccount>
