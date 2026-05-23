@@ -8,9 +8,13 @@ import com.gekiyabafx.model.PlayerData;
 import com.gekiyabafx.model.StorageData;
 import com.gekiyabafx.storage.StorageManager;
 import org.bukkit.Material;
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.Sign;
+import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -18,7 +22,9 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.Locale;
 import java.util.UUID;
@@ -29,6 +35,8 @@ import java.util.UUID;
 public final class AtmSignListener implements Listener {
 
     private static final int MAX_ATMS_PER_OWNER = 5;
+    private static final long OCCUPY_TIMEOUT_MS = 600_000L;
+    private static final String OCCUPIED_MARKER_TAG = "atm-occupied-marker";
 
     private final GekiyabaFXPlugin plugin;
     private final OtpManager playerOtpManager;
@@ -157,7 +165,33 @@ public final class AtmSignListener implements Listener {
 
         if (atm == null || !"active".equalsIgnoreCase(atm.getStatus())) {
             player.sendMessage("§c[FX] This ATM is not registered or inactive.");
+            logAtmEvent("REJECT", atm == null ? null : atm.getId(), identity, "INACTIVE_OR_UNREGISTERED");
             return;
+        }
+
+        StorageManager sm2 = StorageManager.getInstance();
+        sm2.lock();
+        try {
+            // 10分超過の占有は自動解放
+            if (atm.isOccupied() && (System.currentTimeMillis() - atm.getOccupiedSince()) > OCCUPY_TIMEOUT_MS) {
+                releaseAtmOccupancy(atm, "OCCUPY_TIMEOUT");
+            }
+
+            // 他ユーザー占有中は利用不可
+            if (atm.isOccupied() && atm.getOccupiedBy() != null && !identity.equals(atm.getOccupiedBy())) {
+                player.sendMessage("§c[FX] This ATM is currently occupied by another player.");
+                logAtmEvent("REJECT", atm.getId(), identity, "OCCUPIED_BY_OTHER:" + atm.getOccupiedBy());
+                return;
+            }
+
+            atm.setOccupied(true);
+            atm.setOccupiedBy(identity);
+            atm.setOccupiedSince(System.currentTimeMillis());
+            updateAtmSignStatus(atm, true);
+            logAtmEvent("START", atm.getId(), identity, "RIGHT_CLICK");
+            sm2.markDirty();
+        } finally {
+            sm2.unlock();
         }
 
         OtpManager.OtpEntry entry = playerOtpManager.generate(identity);
@@ -189,7 +223,52 @@ public final class AtmSignListener implements Listener {
         Player player = event.getPlayer();
         boolean cleared = atmSessionManager.clearIfOutOfRange(player.getUniqueId().toString());
         if (cleared) {
+            clearOccupiedByIdentity(player.getUniqueId().toString(), "OUT_OF_RANGE");
             player.sendMessage("§e[FX] You moved away from ATM (>3 blocks). ATM session ended.");
+        }
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        String identity = event.getPlayer().getUniqueId().toString();
+        atmSessionManager.clearSession(identity);
+        clearOccupiedByIdentity(identity, "PLAYER_QUIT");
+    }
+
+    public void releaseForIdentity(String identity, String reason) {
+        if (identity == null || identity.isBlank()) {
+            return;
+        }
+        atmSessionManager.clearSession(identity);
+        clearOccupiedByIdentity(identity, reason);
+    }
+
+    public void releaseTimedOutOccupancy() {
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            Collection<AtmData> atms = sm.getAtmRegistry().getAtms().values();
+            long now = System.currentTimeMillis();
+            boolean changed = false;
+            for (AtmData atm : atms) {
+                if (atm == null || !atm.isOccupied()) {
+                    continue;
+                }
+                if ((now - atm.getOccupiedSince()) <= OCCUPY_TIMEOUT_MS) {
+                    continue;
+                }
+                String occupiedBy = atm.getOccupiedBy();
+                releaseAtmOccupancy(atm, "OCCUPY_TIMEOUT");
+                if (occupiedBy != null) {
+                    atmSessionManager.clearSession(occupiedBy);
+                }
+                changed = true;
+            }
+            if (changed) {
+                sm.markDirty();
+            }
+        } finally {
+            sm.unlock();
         }
     }
 
@@ -277,6 +356,102 @@ public final class AtmSignListener implements Listener {
         private ResolvedOwner(String ownerId, String ownerName) {
             this.ownerId = ownerId;
             this.ownerName = ownerName;
+        }
+    }
+
+    private void clearOccupiedByIdentity(String identity, String reason) {
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            AtmData atm = findOccupiedAtmByIdentity(sm, identity);
+            if (atm == null) {
+                return;
+            }
+            releaseAtmOccupancy(atm, reason);
+            sm.markDirty();
+        } finally {
+            sm.unlock();
+        }
+    }
+
+    private static AtmData findOccupiedAtmByIdentity(StorageManager sm, String identity) {
+        for (AtmData atm : sm.getAtmRegistry().getAtms().values()) {
+            if (atm != null && atm.isOccupied() && identity.equals(atm.getOccupiedBy())) {
+                return atm;
+            }
+        }
+        return null;
+    }
+
+    private void releaseAtmOccupancy(AtmData atm, String reason) {
+        String releasedBy = atm.getOccupiedBy();
+        atm.setOccupied(false);
+        atm.setOccupiedBy(null);
+        atm.setOccupiedSince(0L);
+        updateAtmSignStatus(atm, false);
+        String kind = "OCCUPY_TIMEOUT".equals(reason) ? "TIMEOUT" : "RELEASE";
+        logAtmEvent(kind, atm.getId(), releasedBy, reason);
+    }
+
+    private void logAtmEvent(String event, String atmId, String playerId, String detail) {
+        plugin.getLogger().info(
+                "[ATM_OCCUPANCY] event=" + event
+                        + " atmId=" + (atmId == null ? "-" : atmId)
+                        + " player=" + (playerId == null ? "-" : playerId)
+                        + " detail=" + (detail == null ? "-" : detail)
+        );
+    }
+
+    private void updateAtmSignStatus(AtmData atm, boolean occupied) {
+        Location signLoc = getSignLocation(atm);
+        if (signLoc == null || signLoc.getWorld() == null) {
+            return;
+        }
+
+        if (occupied) {
+            createOccupiedMarker(signLoc, atm.getId());
+        } else {
+            removeOccupiedMarker(signLoc, atm.getId());
+        }
+    }
+
+    private static Location getSignLocation(AtmData atm) {
+        if (atm.getSignWorld() == null) {
+            return null;
+        }
+        World world = org.bukkit.Bukkit.getWorld(atm.getSignWorld());
+        if (world == null) {
+            return null;
+        }
+        return new Location(world, atm.getSignX(), atm.getSignY(), atm.getSignZ());
+    }
+
+    private static void createOccupiedMarker(Location signLoc, String atmId) {
+        removeOccupiedMarker(signLoc, atmId);
+
+        Location markerLoc = signLoc.clone().add(0, 1.5, 0);
+        ArmorStand stand = (ArmorStand) signLoc.getWorld().spawnEntity(markerLoc, EntityType.ARMOR_STAND);
+        stand.setCustomName("§c[OCCUPIED]");
+        stand.setCustomNameVisible(true);
+        stand.setGravity(false);
+        stand.setInvisible(true);
+        stand.setCanPickupItems(false);
+        stand.setMarker(true);
+        stand.addScoreboardTag(OCCUPIED_MARKER_TAG);
+        stand.addScoreboardTag("atm-id:" + atmId);
+    }
+
+    private static void removeOccupiedMarker(Location signLoc, String atmId) {
+        for (Entity entity : signLoc.getWorld().getNearbyEntities(
+                signLoc,
+                2,
+                3,
+                2,
+                e -> e instanceof ArmorStand
+                        && ((ArmorStand) e).getScoreboardTags().contains(OCCUPIED_MARKER_TAG)
+                        && ((ArmorStand) e).getScoreboardTags().contains("atm-id:" + atmId)
+        )) {
+            entity.remove();
         }
     }
 

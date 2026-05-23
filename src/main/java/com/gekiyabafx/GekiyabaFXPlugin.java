@@ -123,10 +123,9 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
         // ⑦ PlayerJoinListener を登録する（pending_deposit 回収・pending_withdraw 付与）
         getServer().getPluginManager().registerEvents(new PlayerJoinListener(this), this);
-        getServer().getPluginManager().registerEvents(
-            new AtmSignListener(this, playerOtpManager, atmSessionManager),
-            this
-        );
+        AtmSignListener atmSignListener = new AtmSignListener(this, playerOtpManager, atmSessionManager);
+        getServer().getPluginManager().registerEvents(atmSignListener, this);
+        getServer().getScheduler().runTaskTimer(this, atmSignListener::releaseTimedOutOccupancy, 20L * 30L, 20L * 30L);
 
         // ⑧ Javalin Web サーバーを起動する（静的ファイル配信・SPA フォールバック・CORS）
         webServer = new WebServer(this);
@@ -146,7 +145,7 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
         // ② プレイヤー API エンドポイントを登録する
         //    GET /api/state ・ POST /api/order ・ DELETE /api/order/:id
-        new PlayerApiRouter(playerSessionManager, pluginConfig, executionRepo).register(webServer.getApp());
+        new PlayerApiRouter(playerSessionManager, atmSessionManager, pluginConfig, executionRepo).register(webServer.getApp());
 
         // ⑯ 入出金 API エンドポイントを登録する
         //    POST /api/deposit ・ POST /api/withdraw

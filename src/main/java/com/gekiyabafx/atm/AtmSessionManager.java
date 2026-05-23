@@ -186,6 +186,14 @@ public final class AtmSessionManager {
         return true;
     }
 
+    public boolean clearSession(String identity) {
+        if (identity == null || !activeByIdentity.containsKey(identity)) {
+            return false;
+        }
+        clearByIdentity(identity);
+        return true;
+    }
+
     private ActiveAtmSession resolveActiveSession(String token, String identity) {
         if (token != null) {
             String mappedIdentity = identityByToken.get(token);

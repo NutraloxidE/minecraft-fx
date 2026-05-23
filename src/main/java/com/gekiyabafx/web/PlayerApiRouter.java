@@ -1,6 +1,7 @@
 package com.gekiyabafx.web;
 
 import com.gekiyabafx.auth.SessionManager;
+import com.gekiyabafx.atm.AtmSessionManager;
 import com.gekiyabafx.config.PluginConfig;
 import com.gekiyabafx.engine.InsufficientBalanceException;
 import com.gekiyabafx.engine.MatchResult;
@@ -32,17 +33,31 @@ import java.util.Locale;
 public final class PlayerApiRouter {
 
     private final SessionManager     playerSessionManager;
+    private final AtmSessionManager  atmSessionManager;
     private final PluginConfig        config;
     private final ExecutionRepository executionRepo;
+
+    private static final class AuthContext {
+        private final String token;
+        private final SessionManager.SessionEntry entry;
+
+        private AuthContext(String token, SessionManager.SessionEntry entry) {
+            this.token = token;
+            this.entry = entry;
+        }
+    }
 
     /**
      * @param playerSessionManager プレイヤー用 {@link SessionManager}
      * @param config               プラグイン設定
      * @param executionRepo        約定履歴リポジトリ（H2）
      */
-    public PlayerApiRouter(SessionManager playerSessionManager, PluginConfig config,
+    public PlayerApiRouter(SessionManager playerSessionManager,
+                           AtmSessionManager atmSessionManager,
+                           PluginConfig config,
                            ExecutionRepository executionRepo) {
         this.playerSessionManager = playerSessionManager;
+        this.atmSessionManager    = atmSessionManager;
         this.config               = config;
         this.executionRepo        = executionRepo;
     }
@@ -73,7 +88,7 @@ public final class PlayerApiRouter {
      * 有効なら {@link SessionManager.SessionEntry} を返す。
      * 無効なら {@code 401} を返して {@code null} を返す。
      */
-    private SessionManager.SessionEntry requireAuth(Context ctx) {
+    private AuthContext requireAuth(Context ctx) {
         String header = ctx.header("Authorization");
         if (header == null || !header.startsWith("Bearer ")) {
             ctx.status(401).json(Map.of("error", "unauthorized"));
@@ -85,7 +100,7 @@ public final class PlayerApiRouter {
             ctx.status(401).json(Map.of("error", "unauthorized"));
             return null;
         }
-        return entry;
+        return new AuthContext(token, entry);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -124,10 +139,10 @@ public final class PlayerApiRouter {
      * }</pre>
      */
     private void handleState(Context ctx) {
-        SessionManager.SessionEntry entry = requireAuth(ctx);
-        if (entry == null) return;
+        AuthContext auth = requireAuth(ctx);
+        if (auth == null) return;
 
-        String playerUuid = entry.getIdentity();
+        String playerUuid = auth.entry.getIdentity();
 
         StorageManager sm = StorageManager.getInstance();
         sm.lock();
@@ -215,10 +230,13 @@ public final class PlayerApiRouter {
      * }</pre>
      */
     private void handlePlaceOrder(Context ctx) {
-        SessionManager.SessionEntry entry = requireAuth(ctx);
-        if (entry == null) return;
+        AuthContext auth = requireAuth(ctx);
+        if (auth == null) return;
 
-        String playerUuid = entry.getIdentity();
+        String playerUuid = auth.entry.getIdentity();
+
+        AtmSessionManager.AtmSessionState atmState =
+            atmSessionManager.getStateByToken(auth.token, playerUuid);
 
         // ── リクエストパラメータのパース ──────────────────────────────────────
         Map<String, Object> body;
@@ -294,7 +312,19 @@ public final class PlayerApiRouter {
 
             MatchResult result;
             try {
-                result = MatchingEngine.placeOrder(pairId, pair, incoming, data, config);
+                if (atmState.isActive()) {
+                    result = MatchingEngine.placeOrder(
+                            pairId,
+                            pair,
+                            incoming,
+                            data,
+                            config,
+                            atmState.getAtmId(),
+                            atmState.getGrade()
+                    );
+                } else {
+                    result = MatchingEngine.placeOrder(pairId, pair, incoming, data, config, null, null);
+                }
             } catch (InsufficientBalanceException e) {
                 ctx.status(400).json(Map.of("error", "insufficient_balance", "detail", e.getMessage()));
                 return;
@@ -312,6 +342,8 @@ public final class PlayerApiRouter {
                 em.put("price",      ex.getPrice().toPlainString());
                 em.put("amount",     ex.getAmount().toPlainString());
                 em.put("created_at", ex.getTimestamp());
+                em.put("atm_id",     ex.getAtmId());
+                em.put("atm_grade",  ex.getAtmGrade());
                 execList.add(em);
             }
 
@@ -339,10 +371,10 @@ public final class PlayerApiRouter {
      * <pre>{@code { "cancelled": true } }</pre>
      */
     private void handleCancelOrder(Context ctx) {
-        SessionManager.SessionEntry entry = requireAuth(ctx);
-        if (entry == null) return;
+        AuthContext auth = requireAuth(ctx);
+        if (auth == null) return;
 
-        String playerUuid = entry.getIdentity();
+        String playerUuid = auth.entry.getIdentity();
         String orderId    = ctx.pathParam("id");
 
         StorageManager sm = StorageManager.getInstance();
@@ -391,8 +423,7 @@ public final class PlayerApiRouter {
      * 振込先アカウントを UUID または名前で検索する。
      */
     private void handleResolveTransferTarget(Context ctx) {
-        SessionManager.SessionEntry entry = requireAuth(ctx);
-        if (entry == null) return;
+        if (requireAuth(ctx) == null) return;
 
         String q = ctx.queryParam("q");
         if (q == null || q.trim().isEmpty()) {
@@ -442,10 +473,10 @@ public final class PlayerApiRouter {
      * 自分のホット残高から他アカウントへ振り込みを実行する。
      */
     private void handleTransfer(Context ctx) {
-        SessionManager.SessionEntry entry = requireAuth(ctx);
-        if (entry == null) return;
+        AuthContext auth = requireAuth(ctx);
+        if (auth == null) return;
 
-        String fromUuid = entry.getIdentity();
+        String fromUuid = auth.entry.getIdentity();
 
         Map<String, Object> body;
         try {

@@ -32,6 +32,12 @@ public final class Execution {
      */
     private BigDecimal amount;
 
+    /** ATM経由で発生した約定の場合のATM ID。 */
+    private String atmId;
+
+    /** ATM経由で発生した約定の場合のATMグレード。 */
+    private String atmGrade;
+
     /** GSON デシリアライズ用のデフォルトコンストラクタ。 */
     public Execution() {}
 
@@ -48,16 +54,33 @@ public final class Execution {
         this.amount    = amount;
     }
 
+    public Execution(long timestamp, BigDecimal price, BigDecimal amount, String atmId, String atmGrade) {
+        this.timestamp = timestamp;
+        this.price = price;
+        this.amount = amount;
+        this.atmId = atmId;
+        this.atmGrade = atmGrade;
+    }
+
     public long getTimestamp()       { return timestamp; }
     public BigDecimal getPrice()     { return price; }
     public BigDecimal getAmount()    { return amount; }
+    public String getAtmId()         { return atmId; }
+    public String getAtmGrade()      { return atmGrade; }
 
     public void setTimestamp(long timestamp)      { this.timestamp = timestamp; }
     public void setPrice(BigDecimal price)        { this.price = price; }
     public void setAmount(BigDecimal amount)      { this.amount = amount; }
+    public void setAtmId(String atmId)            { this.atmId = atmId; }
+    public void setAtmGrade(String atmGrade)      { this.atmGrade = atmGrade; }
 
     @Override
     public String toString() {
-        return "Execution{timestamp=" + timestamp + ", price=" + price + ", amount=" + amount + '}';
+        return "Execution{timestamp=" + timestamp
+            + ", price=" + price
+            + ", amount=" + amount
+            + ", atmId='" + atmId + '\''
+            + ", atmGrade='" + atmGrade + '\''
+            + '}';
     }
 }

@@ -311,6 +311,8 @@ public final class PublicApiRouter {
             m.put("timestamp", ex.getTimestamp());
             m.put("price",     bdStr(ex.getPrice()));
             m.put("amount",    bdStr(ex.getAmount()));
+            m.put("atm_id",    ex.getAtmId());
+            m.put("atm_grade", ex.getAtmGrade());
             execSnap.add(m);
         }
 

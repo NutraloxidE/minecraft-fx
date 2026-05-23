@@ -529,16 +529,15 @@ if (atm.occupied && (System.currentTimeMillis() - atm.occupiedSince) > OCCUPY_TI
 ## 7. チェックリスト（追加機能）
 
 - [ ] `AtmData` に `occupied`, `occupiedBy`, `occupiedSince` フィールド追加
-- [ ] `OtpData` に `atmId`, `expiresAt` フィールド追加
-- [ ] `OtpManager.generateOtpForAtm()` 実装
-- [ ] `OtpManager.getAtmByOtp()` 実装
-- [ ] `AtmProximityValidator` クラス実装
+- [ ] `AtmSessionManager` で OTP→ATM の pending 紐付けを保持
+- [ ] `AuthRouter` で OTP 消費時に ATM セッションをアクティブ化
+- [ ] `DepositWithdrawRouter` で ATM セッション範囲検証（`requireActiveInRange`）
 - [ ] 看板右クリックハンドラに占有状態チェック追加
 - [ ] ArmorStand マーカー作成・削除関数実装
-- [ ] `POST /api/order` に範囲検証追加
 - [ ] `POST /api/deposit` に範囲検証追加
 - [ ] `POST /api/withdraw` に範囲検証追加
-- [ ] `MatchingEngine.execute()` に ATMコンテキスト対応
-- [ ] FX ページに OTP期限切れ時のATM解放機能実装
-- [ ] 10分タイムアウト監視スケジューラ実装
+- [ ] `POST /api/order` は通常許可（ATM経由時のみ ATMコンテキスト適用）
+- [ ] `MatchingEngine` へ ATMコンテキスト連携（別タスク）
+- [ ] ATM占有の手動解放API（`POST /api/atm-session/release` など）実装
+- [ ] 10分タイムアウト監視スケジューラ実装（占有解除 + マーカー削除）
 - [ ] ログ記録（占有・解放・タイムアウト）

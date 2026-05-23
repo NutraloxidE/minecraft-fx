@@ -68,9 +68,17 @@ public final class H2ExecutionRepository implements ExecutionRepository {
                 "  pair_id VARCHAR(128) NOT NULL," +
                 "  ts      BIGINT       NOT NULL," +
                 "  price   VARCHAR(32)  NOT NULL," +
-                "  amount  VARCHAR(32)  NOT NULL" +
+                "  amount  VARCHAR(32)  NOT NULL," +
+                "  atm_id  VARCHAR(64)," +
+                "  atm_grade VARCHAR(20)" +
                 ")"
             );
+            try {
+                st.execute("ALTER TABLE executions ADD COLUMN IF NOT EXISTS atm_id VARCHAR(64)");
+                st.execute("ALTER TABLE executions ADD COLUMN IF NOT EXISTS atm_grade VARCHAR(20)");
+            } catch (SQLException ignored) {
+                // 既存DB互換用。CREATE時に定義済みなら無視する。
+            }
             st.execute(
                 "CREATE INDEX IF NOT EXISTS idx_exec_pair_ts ON executions(pair_id, ts)"
             );
@@ -85,12 +93,14 @@ public final class H2ExecutionRepository implements ExecutionRepository {
      */
     @Override
     public synchronized void insert(String pairId, Execution ex) {
-        String sql = "INSERT INTO executions (pair_id, ts, price, amount) VALUES (?, ?, ?, ?)";
+        String sql = "INSERT INTO executions (pair_id, ts, price, amount, atm_id, atm_grade) VALUES (?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, pairId);
             ps.setLong(2, ex.getTimestamp());
             ps.setString(3, ex.getPrice().setScale(4, java.math.RoundingMode.HALF_UP).toPlainString());
             ps.setString(4, ex.getAmount().setScale(4, java.math.RoundingMode.HALF_UP).toPlainString());
+            ps.setString(5, ex.getAtmId());
+            ps.setString(6, ex.getAtmGrade());
             ps.executeUpdate();
         } catch (SQLException e) {
             logger.severe("約定履歴の INSERT に失敗しました [pair=" + pairId + "]: " + e.getMessage());
@@ -106,7 +116,7 @@ public final class H2ExecutionRepository implements ExecutionRepository {
      */
     @Override
     public synchronized List<Execution> findByPairSince(String pairId, long since) {
-        String sql = "SELECT ts, price, amount FROM executions " +
+        String sql = "SELECT ts, price, amount, atm_id, atm_grade FROM executions " +
                      "WHERE pair_id = ? AND ts > ? ORDER BY ts ASC, id ASC";
         List<Execution> result = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -117,7 +127,9 @@ public final class H2ExecutionRepository implements ExecutionRepository {
                     long ts       = rs.getLong("ts");
                     BigDecimal p  = new BigDecimal(rs.getString("price"));
                     BigDecimal a  = new BigDecimal(rs.getString("amount"));
-                    result.add(new Execution(ts, p, a));
+                    String atmId = rs.getString("atm_id");
+                    String atmGrade = rs.getString("atm_grade");
+                    result.add(new Execution(ts, p, a, atmId, atmGrade));
                 }
             }
         } catch (SQLException e) {

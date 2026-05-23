@@ -76,6 +76,18 @@ public final class MatchingEngine {
             StorageData data,
             PluginConfig config
     ) throws InsufficientBalanceException {
+        return placeOrder(pairId, pair, incoming, data, config, null, null);
+        }
+
+        public static MatchResult placeOrder(
+            String pairId,
+            Pair pair,
+            Order incoming,
+            StorageData data,
+            PluginConfig config,
+            String atmId,
+            String atmGrade
+        ) throws InsufficientBalanceException {
 
         // ① 残高をロックする
         lockBalance(pairId, pair, incoming, data);
@@ -85,9 +97,9 @@ public final class MatchingEngine {
         BigDecimal spentQuote = BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP);
 
         if (incoming.getSide() == OrderSide.BUY) {
-            spentQuote = matchBuy(pairId, pair, incoming, data, newExecs, config);
+            spentQuote = matchBuy(pairId, pair, incoming, data, newExecs, config, atmId, atmGrade);
         } else {
-            matchSell(pairId, pair, incoming, data, newExecs, config);
+            matchSell(pairId, pair, incoming, data, newExecs, config, atmId, atmGrade);
         }
 
         long now = Instant.now().getEpochSecond();
@@ -250,7 +262,8 @@ public final class MatchingEngine {
      */
     private static BigDecimal matchBuy(
             String pairId, Pair pair, Order buy,
-            StorageData data, List<Execution> execs, PluginConfig config
+            StorageData data, List<Execution> execs, PluginConfig config,
+            String atmId, String atmGrade
     ) {
         BigDecimal spentQuote = BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP);
         Iterator<Order> it = pair.getOrderBook().getAsks().iterator();
@@ -292,7 +305,7 @@ public final class MatchingEngine {
             settle(pairId, pair, buy, ask, execPrice, execAmount, data, config, true);
             spentQuote = spentQuote.add(
                     execPrice.multiply(execAmount).setScale(4, RoundingMode.HALF_UP));
-            execs.add(new Execution(now, execPrice, execAmount));
+            execs.add(new Execution(now, execPrice, execAmount, atmId, atmGrade));
 
             // ask が全量約定したら板から除去
             if (ask.getRemainingAmount().compareTo(BigDecimal.ZERO) == 0) {
@@ -329,7 +342,8 @@ public final class MatchingEngine {
      */
     private static void matchSell(
             String pairId, Pair pair, Order sell,
-            StorageData data, List<Execution> execs, PluginConfig config
+            StorageData data, List<Execution> execs, PluginConfig config,
+            String atmId, String atmGrade
     ) {
         Iterator<Order> it = pair.getOrderBook().getBids().iterator();
         long now = Instant.now().getEpochSecond();
@@ -351,7 +365,7 @@ public final class MatchingEngine {
             if (execAmount.compareTo(BigDecimal.ZERO) <= 0) break;
 
             settle(pairId, pair, bid, sell, execPrice, execAmount, data, config, false);
-            execs.add(new Execution(now, execPrice, execAmount));
+            execs.add(new Execution(now, execPrice, execAmount, atmId, atmGrade));
 
             // bid が全量約定したら板から除去
             if (bid.getRemainingAmount().compareTo(BigDecimal.ZERO) == 0) {
