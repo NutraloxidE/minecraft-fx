@@ -7,13 +7,30 @@ import com.gekiyabafx.model.Pair;
 import com.gekiyabafx.storage.StorageManager;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
+import org.bukkit.Bukkit;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.file.Files;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * 管理者向け ペア管理 API エンドポイントを Javalin アプリに登録するルーター。
@@ -69,6 +86,7 @@ public final class AdminApiRouter {
         app.patch ("/api/admin/pairs/{id}",         this::handlePatchPair);
         app.delete("/api/admin/pairs/{id}",         this::handleDeletePair);
         app.get   ("/api/admin/service-accounts",   this::handleServiceAccounts);
+        app.get   ("/api/admin/backup/download",    this::handleDownloadServerBackup);
         app.patch ("/api/admin/arbitrage/toggle",   this::handleArbitrageToggle);
         app.get   ("/api/admin/arbitrage/status",   this::handleArbitrageStatus);
     }
@@ -427,6 +445,231 @@ public final class AdminApiRouter {
     private static String bdStr(BigDecimal bd) {
         if (bd == null) return "0.0000";
         return bd.setScale(4, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  GET /api/admin/backup/download
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 管理者認証済みクライアント向けに、サーバー復元用 ZIP を生成して返す。
+     *
+     * <p>ZIP には以下を含める:</p>
+     * <ul>
+    *   <li>サーバールート直下の {@code world*} ディレクトリ群</li>
+    *   <li>{@code plugins/GekiyabaFX}（プラグイン保存データ）</li>
+    *   <li>{@code server.properties}</li>
+    *   <li>{@code config/}（Paper 設定一式）</li>
+     * </ul>
+     *
+     * <p>ディレクトリ構造はサーバールートからの相対パスをそのまま保持する。</p>
+     */
+    private void handleDownloadServerBackup(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        Path pluginDataDir = plugin.getDataFolder().toPath().normalize();
+        Path serverRoot = resolveServerRoot(pluginDataDir);
+        if (serverRoot == null || !Files.isDirectory(serverRoot)) {
+            ctx.status(500).json(Map.of("error", "server_root_not_found"));
+            return;
+        }
+
+        Path pluginDataSource = pluginDataDir;
+        if (!pluginDataSource.startsWith(serverRoot)) {
+            Path fallback = serverRoot.resolve("plugins").resolve("GekiyabaFX").normalize();
+            if (Files.isDirectory(fallback)) {
+                pluginDataSource = fallback;
+            }
+        }
+
+        List<Path> worldDirs;
+        try (Stream<Path> stream = Files.list(serverRoot)) {
+            worldDirs = stream
+                    .filter(Files::isDirectory)
+                    .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).startsWith("world"))
+                    .sorted()
+                    .toList();
+        } catch (IOException e) {
+            plugin.getLogger().warning("バックアップ対象ディレクトリの列挙に失敗しました: " + e.getMessage());
+            ctx.status(500).json(Map.of("error", "backup_scan_failed"));
+            return;
+        }
+
+        Path serverProperties = serverRoot.resolve("server.properties");
+        Path paperConfigDir = serverRoot.resolve("config");
+
+        if (worldDirs.isEmpty()
+            && !Files.isDirectory(pluginDataSource)
+            && !Files.isRegularFile(serverProperties)
+            && !Files.isDirectory(paperConfigDir)) {
+            ctx.status(404).json(Map.of("error", "backup_source_not_found"));
+            return;
+        }
+
+        Path tempZip = null;
+        try {
+            tempZip = Files.createTempFile("gekiyabafx-server-backup-", ".zip");
+
+            boolean wroteSomething = false;
+            try (ZipOutputStream zos = new ZipOutputStream(
+                    new BufferedOutputStream(Files.newOutputStream(tempZip)))) {
+                for (Path worldDir : worldDirs) {
+                    wroteSomething |= zipDirectoryTree(zos, serverRoot, worldDir);
+                }
+                if (Files.isDirectory(pluginDataSource)) {
+                    wroteSomething |= zipDirectoryTree(zos, serverRoot, pluginDataSource);
+                }
+                if (Files.isRegularFile(serverProperties)) {
+                    wroteSomething |= zipSingleFile(zos, serverRoot, serverProperties);
+                }
+                if (Files.isDirectory(paperConfigDir)) {
+                    wroteSomething |= zipDirectoryTree(zos, serverRoot, paperConfigDir);
+                }
+            }
+
+            if (!wroteSomething) {
+                ctx.status(404).json(Map.of("error", "backup_source_not_found"));
+                return;
+            }
+
+            String timestamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(LocalDateTime.now());
+            String filename = "gekiyabafx-server-backup-" + timestamp + ".zip";
+
+            ctx.status(200);
+            ctx.contentType("application/zip");
+            ctx.header("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+            ctx.header("Cache-Control", "no-store");
+            ctx.res().setContentLengthLong(Files.size(tempZip));
+
+            try (
+                    InputStream in = new BufferedInputStream(Files.newInputStream(tempZip));
+                    OutputStream out = ctx.res().getOutputStream()
+            ) {
+                in.transferTo(out);
+                out.flush();
+            }
+        } catch (IOException e) {
+            plugin.getLogger().warning("バックアップZIPの生成または送信に失敗しました: " + e.getMessage());
+            if (!ctx.res().isCommitted()) {
+                ctx.status(500).json(Map.of("error", "backup_generation_failed"));
+            }
+        } finally {
+            if (tempZip != null) {
+                try {
+                    Files.deleteIfExists(tempZip);
+                } catch (IOException ignored) {
+                    // 一時ファイルの削除失敗はリクエスト結果に影響させない。
+                }
+            }
+        }
+    }
+
+    private Path resolveServerRoot(Path pluginDataDir) {
+        try {
+            Path worldContainer = Bukkit.getWorldContainer().toPath().toAbsolutePath().normalize();
+            if (Files.isDirectory(worldContainer)) {
+                return worldContainer;
+            }
+        } catch (Exception ignored) {
+            // Bukkit から取得できない場合は plugins/GekiyabaFX から推定する。
+        }
+
+        Path pluginsDir = pluginDataDir.getParent();
+        if (pluginsDir == null) {
+            return null;
+        }
+        Path guessed = pluginsDir.getParent();
+        if (guessed == null || !Files.isDirectory(guessed)) {
+            return null;
+        }
+        return guessed.normalize();
+    }
+
+    private static boolean zipDirectoryTree(ZipOutputStream zos, Path serverRoot, Path directory) throws IOException {
+        if (!Files.isDirectory(directory)) {
+            return false;
+        }
+
+        final boolean[] wroteSomething = {false};
+
+        Files.walkFileTree(directory, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                try {
+                    Path relative = serverRoot.relativize(dir);
+                    String entryName = relative.toString().replace('\\', '/');
+                    if (!entryName.isBlank()) {
+                        if (!entryName.endsWith("/")) {
+                            entryName += "/";
+                        }
+                        ZipEntry entry = new ZipEntry(entryName);
+                        entry.setTime(attrs.lastModifiedTime().toMillis());
+                        zos.putNextEntry(entry);
+                        zos.closeEntry();
+                        wroteSomething[0] = true;
+                    }
+                } catch (Exception ignored) {
+                    // 読み取り不可ディレクトリはスキップして継続する。
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                try {
+                    Path relative = serverRoot.relativize(file);
+                    String entryName = relative.toString().replace('\\', '/');
+                    if (entryName.isBlank()) {
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    ZipEntry entry = new ZipEntry(entryName);
+                    entry.setTime(attrs.lastModifiedTime().toMillis());
+                    zos.putNextEntry(entry);
+                    try (InputStream in = new BufferedInputStream(Files.newInputStream(file))) {
+                        in.transferTo(zos);
+                    }
+                    zos.closeEntry();
+                    wroteSomething[0] = true;
+                } catch (Exception ignored) {
+                    // 稼働中サーバーでロックされたファイルはスキップして継続する。
+                    try {
+                        zos.closeEntry();
+                    } catch (Exception ignored2) {
+                        // no-op
+                    }
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                return FileVisitResult.CONTINUE;
+            }
+        });
+
+        return wroteSomething[0];
+    }
+
+    private static boolean zipSingleFile(ZipOutputStream zos, Path serverRoot, Path file) throws IOException {
+        if (!Files.isRegularFile(file)) {
+            return false;
+        }
+
+        Path relative = serverRoot.relativize(file);
+        String entryName = relative.toString().replace('\\', '/');
+        if (entryName.isBlank()) {
+            return false;
+        }
+
+        ZipEntry entry = new ZipEntry(entryName);
+        entry.setTime(Files.getLastModifiedTime(file).toMillis());
+        zos.putNextEntry(entry);
+        try (InputStream in = new BufferedInputStream(Files.newInputStream(file))) {
+            in.transferTo(zos);
+        }
+        zos.closeEntry();
+        return true;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

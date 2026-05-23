@@ -19,6 +19,7 @@ import {
   adminFetchServiceAccounts,
   adminFetchArbitrageStatus,
   adminToggleArbitrage,
+  adminDownloadServerBackup,
 } from '@/lib/api'
 import {
   DEBUG_ADMIN_PAIRS,
@@ -266,6 +267,51 @@ function ServiceAccountBalances({ isDebug }: { isDebug: boolean }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function BackupDownloadPanel({ isDebug }: { isDebug: boolean }) {
+  const [downloading, setDownloading] = useState(false)
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
+
+  const handleDownload = async () => {
+    if (isDebug) {
+      setMsg({ text: '[DEBUG] バックアップZIPのダウンロードを実行したことにします', ok: true })
+      return
+    }
+
+    setDownloading(true)
+    setMsg(null)
+    try {
+      const { blob, filename } = await adminDownloadServerBackup()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      setMsg({ text: `バックアップZIPを生成しました: ${filename}`, ok: true })
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      setMsg({ text: err.message ?? 'バックアップZIPのダウンロードに失敗しました', ok: false })
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <div className="admin-backup-panel">
+      <h3 className="admin-section-title">サーバーバックアップ</h3>
+      <p className="admin-backup-desc">
+        world系データ、plugins/GekiyabaFX、server.properties、config配下のPaper設定を、ディレクトリ構造そのままでZIP化してダウンロードします。
+      </p>
+      <button className="admin-submit-btn" onClick={handleDownload} disabled={downloading}>
+        {downloading ? 'バックアップ生成中...' : 'ワールド + GekiyabaFX データをZIPでダウンロード'}
+      </button>
+      {msg && <p className={`admin-msg ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</p>}
     </div>
   )
 }
@@ -552,6 +598,10 @@ export default function AdminPage() {
 
         <section className="admin-section">
           <ServiceAccountBalances isDebug={isDebug} />
+        </section>
+
+        <section className="admin-section">
+          <BackupDownloadPanel isDebug={isDebug} />
         </section>
       </main>
     </div>

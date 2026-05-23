@@ -1162,6 +1162,18 @@ code {
 .admin-loading { font-size: 0.85rem; color: var(--text); padding: 1rem 0; }
 .admin-err-msg { font-size: 0.85rem; color: #e05c5c; }
 
+.admin-backup-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.admin-backup-desc {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
 /* ─── 裁定取引コントロール ─────────────────────────────────── */
 .arb-panel {
   display: flex;

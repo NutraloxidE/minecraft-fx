@@ -278,3 +278,34 @@ export const adminFetchArbitrageStatus = (): Promise<ArbitrageStatusResponse> =>
 /** 裁定取引の実行ON/OFF・サービスアカウントを更新する */
 export const adminToggleArbitrage = (req: ArbitrageToggleRequest): Promise<ArbitrageToggleResponse> =>
   request('PATCH', '/api/admin/arbitrage/toggle', getAdminToken(), req)
+
+export interface AdminBackupDownloadResult {
+  blob: Blob
+  filename: string
+}
+
+/** 管理者向けサーバーバックアップZIPをダウンロードする */
+export const adminDownloadServerBackup = async (): Promise<AdminBackupDownloadResult> => {
+  const token = getAdminToken()
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  const res = await fetch('/api/admin/backup/download', {
+    method: 'GET',
+    headers,
+  })
+
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}))
+    const code = (json as { error?: string }).error ?? String(res.status)
+    throw new ApiException(res.status, code)
+  }
+
+  const contentDisposition = res.headers.get('Content-Disposition') ?? ''
+  const match = /filename="([^"]+)"/i.exec(contentDisposition)
+  const filename = match?.[1] ?? 'gekiyabafx-server-backup.zip'
+  const blob = await res.blob()
+  return { blob, filename }
+}
