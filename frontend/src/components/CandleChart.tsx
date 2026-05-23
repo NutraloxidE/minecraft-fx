@@ -36,7 +36,7 @@ export default function CandleChart({ pairId, contextMenuItems = [], onSetPrice 
   const candleDataRef = useRef<CandlestickData<Time>[]>([])
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: number | null; closePrice: number | null } | null>(null)
 
-  const { executions, loading } = useExecutionCache(pairId)
+  const { executions, loading, resetCacheAndReload } = useExecutionCache(pairId)
 
   // チャートの初期化（マウント時のみ）
   useEffect(() => {
@@ -216,17 +216,29 @@ export default function CandleChart({ pairId, contextMenuItems = [], onSetPrice 
         )}
       </div>
 
-      {/* 時間足セレクター */}
-      <div className="timeframe-selector">
-        {TIMEFRAMES.map((tf) => (
+      {/* 時間足・データ操作 */}
+      <div className="chart-toolbar">
+        <div className="timeframe-selector">
+          {TIMEFRAMES.map((tf) => (
+            <button
+              key={tf.sec}
+              className={`tf-btn${tfSec === tf.sec ? ' active' : ''}`}
+              onClick={() => setTfSec(tf.sec)}
+            >
+              {tf.label}
+            </button>
+          ))}
+        </div>
+        <div className="chart-toolbar-actions">
           <button
-            key={tf.sec}
-            className={`tf-btn${tfSec === tf.sec ? ' active' : ''}`}
-            onClick={() => setTfSec(tf.sec)}
+            type="button"
+            className="chart-cache-reset-btn"
+            disabled={!pairId || loading}
+            onClick={() => { void resetCacheAndReload() }}
           >
-            {tf.label}
+            約定履歴キャッシュ削除してフルリロード
           </button>
-        ))}
+        </div>
       </div>
 
       {/* チャート本体 */}
