@@ -5,6 +5,68 @@
 import { useState, useRef, useEffect } from 'react'
 import type { PairSummary } from '@/types/api'
 
+const ITEM_ICON_BASE = 'https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/item'
+const BLOCK_ICON_BASE = 'https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block'
+
+function normalizeItemKey(raw: string): string {
+  return raw.replace(/^minecraft:/i, '').trim().toLowerCase()
+}
+
+function iconUrl(itemKey: string, kind: 'item' | 'block'): string {
+  const base = kind === 'item' ? ITEM_ICON_BASE : BLOCK_ICON_BASE
+  return `${base}/${encodeURIComponent(normalizeItemKey(itemKey))}.png`
+}
+
+function ItemIconImage({
+  itemKey,
+  className,
+}: {
+  itemKey: string
+  className: string
+}) {
+  const normalizedKey = normalizeItemKey(itemKey)
+  const [kind, setKind] = useState<'item' | 'block'>('item')
+  const [hidden, setHidden] = useState(false)
+
+  useEffect(() => {
+    setKind('item')
+    setHidden(false)
+  }, [normalizedKey])
+
+  if (hidden) {
+    return null
+  }
+
+  return (
+    <img
+      className={className}
+      src={iconUrl(normalizedKey, kind)}
+      alt=""
+      loading="lazy"
+      onError={() => {
+        if (kind === 'item') {
+          setKind('block')
+          return
+        }
+        setHidden(true)
+      }}
+    />
+  )
+}
+
+function PairIcon({ base, quote }: { base: string; quote: string }) {
+  const baseKey = normalizeItemKey(base)
+  const quoteKey = normalizeItemKey(quote)
+
+  return (
+    <span className="pair-icon-stack" aria-hidden="true">
+      <ItemIconImage className="pair-icon-main" itemKey={baseKey} />
+      <ItemIconImage className="pair-icon-overlay" itemKey={quoteKey} />
+      <span className="pair-icon-fallback">{baseKey.slice(0, 1).toUpperCase()}</span>
+    </span>
+  )
+}
+
 interface Props {
   pairs: PairSummary[]
   selectedId: string | null
@@ -45,6 +107,7 @@ export default function PairSelector({ pairs, selectedId, onChange }: Props) {
           onClick={() => setOpen((v) => !v)}
           type="button"
         >
+          {selected && <PairIcon base={selected.base} quote={selected.quote} />}
           <span className="pair-dropdown-label">{selected?.id ?? '—'}</span>
           {selected?.last_price && (
             <span className="pair-dropdown-price">{selected.last_price}</span>
@@ -63,6 +126,7 @@ export default function PairSelector({ pairs, selectedId, onChange }: Props) {
                 type="button"
                 onClick={() => { onChange(p.id); setOpen(false) }}
               >
+                <PairIcon base={p.base} quote={p.quote} />
                 <span className="pair-dropdown-item-id">{p.id}</span>
                 {p.last_price && (
                   <span className="pair-dropdown-item-price">{p.last_price}</span>

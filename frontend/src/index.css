@@ -359,6 +359,54 @@ code {
   transition: transform 0.15s;
 }
 
+.pair-icon-stack {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--bg) 76%, var(--border));
+  border: 1px solid var(--border);
+  overflow: visible;
+}
+
+.pair-icon-main {
+  width: 16px;
+  height: 16px;
+  image-rendering: pixelated;
+}
+
+.pair-icon-overlay {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  top: -4px;
+  left: -4px;
+  image-rendering: pixelated;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+}
+
+.pair-icon-fallback {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--text-h);
+  pointer-events: none;
+}
+
+.pair-icon-main:not([style*='display: none']) + .pair-icon-overlay + .pair-icon-fallback {
+  display: none;
+}
+
 .pair-dropdown-trigger.open .pair-dropdown-arrow {
   transform: rotate(180deg);
 }
