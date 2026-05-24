@@ -23,6 +23,9 @@ public final class PluginConfig {
     /** ログインURLに使用するサーバーのIPアドレスまたはドメイン名。デフォルト: {@code "127.0.0.1"} */
     private final String serverIp;
 
+    /** 内蔵WebサーバーがbindするIPアドレス。デフォルト: {@code "0.0.0.0"} */
+    private final String webBindIp;
+
     /** 内蔵WebサーバーがリッスンするTCPポート番号。デフォルト: {@code 3010} */
     private final int webPort;
 
@@ -107,6 +110,7 @@ public final class PluginConfig {
 
     private PluginConfig(
             String serverIp,
+            String webBindIp,
             int webPort,
             boolean devMode,
             long otpExpireSeconds,
@@ -134,6 +138,7 @@ public final class PluginConfig {
                 String arbitrageLogLevel
     ) {
         this.serverIp              = serverIp;
+        this.webBindIp             = webBindIp;
         this.webPort                = webPort;
         this.devMode                = devMode;
         this.otpExpireSeconds       = otpExpireSeconds;
@@ -175,7 +180,7 @@ public final class PluginConfig {
             int executionsMaxPerPair,
             int orderHistoryMaxPerPair
     ) {
-        return new PluginConfig(serverIp, webPort, devMode,
+        return new PluginConfig(serverIp, "0.0.0.0", webPort, devMode,
                 otpExpireSeconds, sessionExpireSeconds,
                 executionsMaxPerPair, orderHistoryMaxPerPair,
                 new BigDecimal("0.0010"), new BigDecimal("0.0012"),
@@ -206,6 +211,12 @@ public final class PluginConfig {
         if (serverIp == null || serverIp.isBlank()) {
             throw new IllegalArgumentException(
                     "config.yml: server-ip が空です。IPアドレスまたはドメイン名を設定してください。");
+        }
+
+        String webBindIp = cfg.getString("web-bind-ip", "0.0.0.0");
+        if (webBindIp == null || webBindIp.isBlank()) {
+            throw new IllegalArgumentException(
+                    "config.yml: web-bind-ip が空です。0.0.0.0 または待受用IPを設定してください。");
         }
 
         int webPort = cfg.getInt("web-port", 3010);
@@ -334,6 +345,7 @@ public final class PluginConfig {
 
         return new PluginConfig(
                 serverIp,
+            webBindIp,
                 webPort,
                 devMode,
                 otpExpireSeconds,
@@ -367,6 +379,11 @@ public final class PluginConfig {
     /** @return ログインURLに使用するサーバーのIPアドレスまたはドメイン名 */
     public String getServerIp() {
         return serverIp;
+    }
+
+    /** @return 内蔵WebサーバーがbindするIPアドレス */
+    public String getWebBindIp() {
+        return webBindIp;
     }
 
     /** @return 内蔵WebサーバーのTCPポート番号 */
@@ -497,6 +514,7 @@ public final class PluginConfig {
     public String toString() {
         return "PluginConfig{"
                 + "serverIp='" + serverIp + "'"
+            + ", webBindIp='" + webBindIp + "'"
                 + ", webPort=" + webPort
                 + ", devMode=" + devMode
                 + ", otpExpireSeconds=" + otpExpireSeconds

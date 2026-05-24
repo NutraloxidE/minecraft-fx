@@ -17,6 +17,7 @@ import java.util.logging.Logger;
  *   <li>SPA フォールバック — API パス以外の全リクエストを {@code /www/index.html} へ転送する。</li>
  *   <li>CORS — {@code dev-mode: true} のときは全オリジンを許可し、
  *       本番時は {@code server-ip:web-port} のオリジンのみ許可する。</li>
+ *   <li>待受先は {@code web-bind-ip}、公開URLは {@code server-ip} として分離する。</li>
  *   <li>Javalin インスタンスを公開し、Step 11 以降のエンドポイント登録に使用できるようにする。</li>
  * </ul>
  *
@@ -43,7 +44,7 @@ public final class WebServer {
      */
     public WebServer(GekiyabaFXPlugin plugin) {
         PluginConfig cfg = plugin.getPluginConfig();
-        this.bindIp   = cfg.getServerIp();
+        this.bindIp   = cfg.getWebBindIp();
         this.bindPort = cfg.getWebPort();
         this.logger   = plugin.getLogger();
 
@@ -62,8 +63,8 @@ public final class WebServer {
                     } else {
                         // 本番時: 設定されたオリジンのみ許可する
                         rule.allowHost(
-                            "http://"  + bindIp + ":" + bindPort,
-                            "https://" + bindIp + ":" + bindPort
+                            "http://"  + cfg.getServerIp() + ":" + bindPort,
+                            "https://" + cfg.getServerIp() + ":" + bindPort
                         );
                     }
                 })
@@ -96,7 +97,7 @@ public final class WebServer {
     /**
      * サーバーを起動する。{@code onEnable()} から呼ぶこと。
      *
-     * <p>{@link PluginConfig#getServerIp()} と {@link PluginConfig#getWebPort()} に
+     * <p>{@link PluginConfig#getWebBindIp()} と {@link PluginConfig#getWebPort()} に
      * バインドする。</p>
      */
     public void start() {
