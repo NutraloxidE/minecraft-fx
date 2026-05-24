@@ -15,6 +15,7 @@ import {
   adminFetchPairs,
   adminCreatePair,
   adminPatchPair,
+  adminReorderPairs,
   adminDeletePair,
   adminFetchServiceAccounts,
   adminFetchWebSettings,
@@ -119,11 +120,25 @@ function CreatePairForm({ onCreated, isDebug }: CreateFormProps) {
 
 interface PairRowProps {
   pair: AdminPair
+  canMoveUp: boolean
+  canMoveDown: boolean
+  movingDisabled: boolean
+  onMoveUp: () => void
+  onMoveDown: () => void
   onChanged: () => void
   isDebug: boolean
 }
 
-function PairRow({ pair, onChanged, isDebug }: PairRowProps) {
+function PairRow({
+  pair,
+  canMoveUp,
+  canMoveDown,
+  movingDisabled,
+  onMoveUp,
+  onMoveDown,
+  onChanged,
+  isDebug,
+}: PairRowProps) {
   const [editing,   setEditing]   = useState(false)
   const [enabled,   setEnabled]   = useState(pair.enabled)
   const [minAmount, setMinAmount] = useState(pair.min_amount)
@@ -205,6 +220,8 @@ function PairRow({ pair, onChanged, isDebug }: PairRowProps) {
       <td>{pair.last_price ?? '—'}</td>
       <td>
         <div className="admin-row-actions">
+          <button className="admin-edit-btn" onClick={onMoveUp} disabled={busy || movingDisabled || !canMoveUp}>↑</button>
+          <button className="admin-edit-btn" onClick={onMoveDown} disabled={busy || movingDisabled || !canMoveDown}>↓</button>
           {editing ? (
             <>
               <button className="admin-save-btn"   onClick={handleSave}                              disabled={busy}>保存</button>
@@ -608,6 +625,8 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
 function PairTable({ isDebug }: { isDebug: boolean }) {
   const [pairs,    setPairs]    = useState<AdminPair[]>([])
   const [loading,  setLoading]  = useState(true)
+  const [reordering, setReordering] = useState(false)
+  const [orderMsg, setOrderMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [fetchErr, setFetchErr] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -625,6 +644,34 @@ function PairTable({ isDebug }: { isDebug: boolean }) {
 
   useEffect(() => { load() }, [load])
 
+  const movePair = async (fromIndex: number, toIndex: number) => {
+    if (reordering) return
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= pairs.length || toIndex >= pairs.length) return
+
+    const next = [...pairs]
+    const [moved] = next.splice(fromIndex, 1)
+    next.splice(toIndex, 0, moved)
+
+    if (isDebug) {
+      setPairs(next)
+      setOrderMsg({ text: `[DEBUG] 並び順を変更: ${moved.id} を ${toIndex + 1} 番目に移動`, ok: true })
+      return
+    }
+
+    setReordering(true)
+    setOrderMsg(null)
+    try {
+      await adminReorderPairs(next.map((p) => p.id))
+      setPairs(next)
+      setOrderMsg({ text: `並び順を保存しました: ${moved.id} を ${toIndex + 1} 番目に移動`, ok: true })
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      setOrderMsg({ text: err.message ?? '並び順の保存に失敗しました', ok: false })
+    } finally {
+      setReordering(false)
+    }
+  }
+
   if (loading)  return <p className="admin-loading">読み込み中...</p>
   if (fetchErr) return <p className="admin-err-msg">{fetchErr}</p>
 
@@ -640,10 +687,23 @@ function PairTable({ isDebug }: { isDebug: boolean }) {
         <tbody>
           {pairs.length === 0
             ? <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text)' }}>ペアなし</td></tr>
-            : pairs.map((p) => <PairRow key={p.id} pair={p} onChanged={load} isDebug={isDebug} />)
+            : pairs.map((p, idx) => (
+                <PairRow
+                  key={p.id}
+                  pair={p}
+                  canMoveUp={idx > 0}
+                  canMoveDown={idx < pairs.length - 1}
+                  movingDisabled={reordering}
+                  onMoveUp={() => { void movePair(idx, idx - 1) }}
+                  onMoveDown={() => { void movePair(idx, idx + 1) }}
+                  onChanged={load}
+                  isDebug={isDebug}
+                />
+              ))
           }
         </tbody>
       </table>
+      {orderMsg && <p className={`admin-msg ${orderMsg.ok ? 'ok' : 'err'}`}>{orderMsg.text}</p>}
     </div>
   )
 }

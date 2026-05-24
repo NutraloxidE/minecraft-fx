@@ -236,6 +236,10 @@ export const adminCreatePair = (req: CreatePairRequest): Promise<{ id: string; c
 export const adminPatchPair = (id: string, req: PatchPairRequest): Promise<AdminPair> =>
   request('PATCH', `/api/admin/pairs/${encodeURIComponent(id)}`, getAdminToken(), req)
 
+/** ペア一覧の表示順を更新する */
+export const adminReorderPairs = (orderedIds: string[]): Promise<AdminPair[]> =>
+  request('PATCH', '/api/admin/pairs/order', getAdminToken(), { ordered_ids: orderedIds })
+
 /** ペアを削除する */
 export const adminDeletePair = (id: string): Promise<{ id: string; deleted: boolean }> =>
   request('DELETE', `/api/admin/pairs/${encodeURIComponent(id)}`, getAdminToken())

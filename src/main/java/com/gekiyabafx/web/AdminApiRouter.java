@@ -24,10 +24,12 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -83,6 +85,7 @@ public final class AdminApiRouter {
     public void register(Javalin app) {
         app.get   ("/api/admin/pairs",              this::handleListPairs);
         app.post  ("/api/admin/pairs",              this::handleCreatePair);
+        app.patch ("/api/admin/pairs/order",        this::handleReorderPairs);
         app.patch ("/api/admin/pairs/{id}",         this::handlePatchPair);
         app.delete("/api/admin/pairs/{id}",         this::handleDeletePair);
         app.get   ("/api/admin/web-settings",       this::handleGetWebSettings);
@@ -91,6 +94,70 @@ public final class AdminApiRouter {
         app.get   ("/api/admin/backup/download",    this::handleDownloadServerBackup);
         app.patch ("/api/admin/arbitrage/toggle",   this::handleArbitrageToggle);
         app.get   ("/api/admin/arbitrage/status",   this::handleArbitrageStatus);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  PATCH /api/admin/pairs/order
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * ペア一覧の表示順を並び替える。
+     *
+     * <h4>リクエストボディ</h4>
+     * <pre>{@code
+     * {
+     *   "ordered_ids": ["DIAMOND/EMERALD", "GOLD/EMERALD", "IRON/EMERALD"]
+     * }
+     * }</pre>
+     *
+     * <p>{@code ordered_ids} は現在存在する全ペアIDを重複なく1回ずつ含む必要がある。</p>
+     */
+    private void handleReorderPairs(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        Map<String, Object> body = parseBody(ctx);
+        if (body == null) return;
+
+        List<String> orderedIds = getStringList(body, "ordered_ids");
+        if (orderedIds == null || orderedIds.isEmpty()) {
+            ctx.status(400).json(Map.of("error", "missing_ordered_ids"));
+            return;
+        }
+
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            Map<String, Pair> currentPairs = sm.getData().getPairs();
+            if (orderedIds.size() != currentPairs.size()) {
+                ctx.status(400).json(Map.of("error", "pair_count_mismatch"));
+                return;
+            }
+
+            Set<String> unique = new LinkedHashSet<>(orderedIds);
+            if (unique.size() != orderedIds.size()) {
+                ctx.status(400).json(Map.of("error", "duplicate_pair_id"));
+                return;
+            }
+
+            if (!currentPairs.keySet().containsAll(unique) || !unique.containsAll(currentPairs.keySet())) {
+                ctx.status(400).json(Map.of("error", "invalid_pair_ids"));
+                return;
+            }
+
+            Map<String, Pair> reordered = new LinkedHashMap<>();
+            for (String id : orderedIds) {
+                reordered.put(id, currentPairs.get(id));
+            }
+
+            sm.getData().setPairs(reordered);
+            sm.markDirty();
+
+            List<Map<String, Object>> list = new ArrayList<>();
+            reordered.forEach((id, pair) -> list.add(pairToMap(id, pair)));
+            ctx.status(200).json(list);
+        } finally {
+            sm.unlock();
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -432,6 +499,20 @@ public final class AdminApiRouter {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private static List<String> getStringList(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        if (!(v instanceof List<?> list)) return null;
+
+        List<String> out = new ArrayList<>();
+        for (Object e : list) {
+            if (!(e instanceof String s) || s.isBlank()) {
+                return null;
+            }
+            out.add(s);
+        }
+        return out;
     }
 
     private static BigDecimal parseBigDecimal(Map<String, Object> map, String key, BigDecimal defaultVal) {
