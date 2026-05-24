@@ -88,6 +88,22 @@ public final class PluginConfig {
      */
     private final List<String> serviceAccounts;
 
+    // ─── ATM（取引ブロック定義）──────────────────────────────────────────────
+
+    /** ATM の手数料プロファイル（key: Material名, value: 手数料・配分設定）。 */
+    private final Map<String, AtmFeeProfile> atmFeeProfilesByBlock;
+
+    /** ATM の手数料プロファイル（key: grade名, value: 手数料・配分設定）。 */
+    private final Map<String, AtmFeeProfile> atmFeeProfilesByGrade;
+
+    /** ATM 構造判定の走査半径（N のとき (2N+1)^3 を走査）。 */
+    private final int atmBlockScanRadius;
+
+    /** ATM 構造判定で必要な同種ブロック数。 */
+    private final int atmRequiredMatchingBlocks;
+
+    /** [FX] 看板の近接設置を禁止する半径。 */
+    private final int atmFxSignExclusionRadius;
     // ─── 裁定取引（Arbitrage） ───────────────────────────────────────────────
 
     private final boolean arbitrageEnabled;
@@ -121,6 +137,10 @@ public final class PluginConfig {
             BigDecimal feeTaker,
             Map<String, BigDecimal> feeOverrides,
                 List<String> serviceAccounts,
+                Map<String, AtmFeeProfile> atmFeeProfilesByBlock,
+                int atmBlockScanRadius,
+                int atmRequiredMatchingBlocks,
+                int atmFxSignExclusionRadius,
                 boolean arbitrageEnabled,
                 String arbitrageServiceAccount,
                 int arbitrageCheckIntervalTicks,
@@ -149,6 +169,11 @@ public final class PluginConfig {
         this.feeTaker               = feeTaker;
         this.feeOverrides           = Collections.unmodifiableMap(feeOverrides);
         this.serviceAccounts        = Collections.unmodifiableList(serviceAccounts);
+        this.atmFeeProfilesByBlock  = Collections.unmodifiableMap(atmFeeProfilesByBlock);
+        this.atmFeeProfilesByGrade  = Collections.unmodifiableMap(indexByGrade(atmFeeProfilesByBlock));
+        this.atmBlockScanRadius     = atmBlockScanRadius;
+        this.atmRequiredMatchingBlocks = atmRequiredMatchingBlocks;
+        this.atmFxSignExclusionRadius = atmFxSignExclusionRadius;
         this.arbitrageEnabled       = arbitrageEnabled;
         this.arbitrageServiceAccount = arbitrageServiceAccount;
         this.arbitrageCheckIntervalTicks = arbitrageCheckIntervalTicks;
@@ -185,6 +210,7 @@ public final class PluginConfig {
                 executionsMaxPerPair, orderHistoryMaxPerPair,
                 new BigDecimal("0.0010"), new BigDecimal("0.0012"),
             Collections.emptyMap(), Collections.emptyList(),
+            defaultAtmFeeProfiles(), 3, 11, 3,
             false, "svc:arbitrage", 300,
             new BigDecimal("0.5"), new BigDecimal("0.30"),
             new BigDecimal("3.0"), new BigDecimal("35"), 60,
@@ -253,6 +279,78 @@ public final class PluginConfig {
 
         List<String> serviceAccounts = cfg.getStringList("serviceAccounts");
 
+        // atm (取引ブロック定義)
+        ConfigurationSection atmSection = cfg.getConfigurationSection("atm");
+
+        Map<String, AtmFeeProfile> atmFeeProfilesByBlock = new HashMap<>(defaultAtmFeeProfiles());
+        if (atmSection != null) {
+            ConfigurationSection blockGradesSec = atmSection.getConfigurationSection("block-grades");
+            if (blockGradesSec != null) {
+                Map<String, AtmFeeProfile> loaded = new HashMap<>();
+                for (String key : blockGradesSec.getKeys(false)) {
+                    if (key == null || key.isBlank()) {
+                        continue;
+                    }
+                    ConfigurationSection sec = blockGradesSec.getConfigurationSection(key);
+                    if (sec == null) {
+                        continue;
+                    }
+
+                    String grade = sec.getString("grade", key).trim().toLowerCase();
+                    BigDecimal maker = new BigDecimal(sec.getString("maker", "0.0010"));
+                    BigDecimal taker = new BigDecimal(sec.getString("taker", "0.0012"));
+
+                    BigDecimal ownerShare = new BigDecimal(sec.getString("owner-share", "0"));
+                    String treasuryShareRaw = sec.getString("treasury-share");
+                    BigDecimal treasuryShare = treasuryShareRaw == null
+                            ? BigDecimal.ONE.subtract(ownerShare)
+                            : new BigDecimal(treasuryShareRaw);
+
+                    validateShare("atm.block-grades." + key + ".owner-share", ownerShare);
+                    validateShare("atm.block-grades." + key + ".treasury-share", treasuryShare);
+
+                    if (ownerShare.add(treasuryShare).compareTo(BigDecimal.ONE) != 0) {
+                        throw new IllegalArgumentException("config.yml: atm.block-grades." + key
+                                + " の owner-share + treasury-share は 1.0 にしてください。");
+                    }
+
+                    loaded.put(key.trim().toUpperCase(), new AtmFeeProfile(
+                            grade,
+                            maker,
+                            taker,
+                            ownerShare,
+                            treasuryShare
+                    ));
+                }
+                if (!loaded.isEmpty()) {
+                    atmFeeProfilesByBlock = loaded;
+                }
+            }
+        }
+
+        int atmBlockScanRadius = atmSection != null
+                ? atmSection.getInt("block-scan-radius", 3)
+                : 3;
+        if (atmBlockScanRadius < 1) {
+            throw new IllegalArgumentException("config.yml: atm.block-scan-radius は 1 以上にしてください: "
+                    + atmBlockScanRadius);
+        }
+
+        int atmRequiredMatchingBlocks = atmSection != null
+                ? atmSection.getInt("required-matching-blocks", 11)
+                : 11;
+        if (atmRequiredMatchingBlocks < 1) {
+            throw new IllegalArgumentException("config.yml: atm.required-matching-blocks は 1 以上にしてください: "
+                    + atmRequiredMatchingBlocks);
+        }
+
+        int atmFxSignExclusionRadius = atmSection != null
+                ? atmSection.getInt("fx-sign-exclusion-radius", 3)
+                : 3;
+        if (atmFxSignExclusionRadius < 0) {
+            throw new IllegalArgumentException("config.yml: atm.fx-sign-exclusion-radius は 0 以上にしてください: "
+                    + atmFxSignExclusionRadius);
+        }
         // fee.maker / fee.taker
         ConfigurationSection feeSection = cfg.getConfigurationSection("fee");
         BigDecimal feeMaker = new BigDecimal(feeSection != null
@@ -356,6 +454,10 @@ public final class PluginConfig {
                 feeTaker,
                 feeOverrides,
                 serviceAccounts,
+                atmFeeProfilesByBlock,
+                atmBlockScanRadius,
+                atmRequiredMatchingBlocks,
+                atmFxSignExclusionRadius,
                 arbitrageEnabled,
                 arbitrageServiceAccount,
                 arbitrageCheckIntervalTicks,
@@ -419,6 +521,42 @@ public final class PluginConfig {
     /** @return /fx login-as で許可された Service アカウント名リスト（svc: プレフィックスなし） */
     public List<String> getServiceAccounts() {
         return serviceAccounts;
+    }
+
+    /** @return ATM のブロック種別→グレード定義（読み取り専用） */
+    public Map<String, AtmFeeProfile> getAtmFeeProfilesByBlock() {
+        return atmFeeProfilesByBlock;
+    }
+
+    /** @return grade名に対応する ATM 手数料プロファイル（未定義なら null） */
+    public AtmFeeProfile findAtmFeeProfileByGrade(String grade) {
+        if (grade == null || grade.isBlank()) {
+            return null;
+        }
+        return atmFeeProfilesByGrade.get(grade.trim().toLowerCase());
+    }
+
+    /** @return blockType名に対応する ATM 手数料プロファイル（未定義なら null） */
+    public AtmFeeProfile findAtmFeeProfileByBlockType(String blockType) {
+        if (blockType == null || blockType.isBlank()) {
+            return null;
+        }
+        return atmFeeProfilesByBlock.get(blockType.trim().toUpperCase());
+    }
+
+    /** @return ATM 構造判定の走査半径 */
+    public int getAtmBlockScanRadius() {
+        return atmBlockScanRadius;
+    }
+
+    /** @return ATM 構造判定に必要な同種ブロック数 */
+    public int getAtmRequiredMatchingBlocks() {
+        return atmRequiredMatchingBlocks;
+    }
+
+    /** @return [FX] 看板の近接設置禁止半径 */
+    public int getAtmFxSignExclusionRadius() {
+        return atmFxSignExclusionRadius;
     }
 
     /** @return Maker 手数料率 */
@@ -525,6 +663,10 @@ public final class PluginConfig {
                 + ", feeTaker=" + feeTaker
                 + ", feeOverrides=" + feeOverrides
                 + ", serviceAccounts=" + serviceAccounts
+                + ", atmFeeProfilesByBlock=" + atmFeeProfilesByBlock
+                + ", atmBlockScanRadius=" + atmBlockScanRadius
+                + ", atmRequiredMatchingBlocks=" + atmRequiredMatchingBlocks
+                + ", atmFxSignExclusionRadius=" + atmFxSignExclusionRadius
                 + ", arbitrageEnabled=" + arbitrageEnabled
                 + ", arbitrageServiceAccount='" + arbitrageServiceAccount + "'"
                 + ", arbitrageCheckIntervalTicks=" + arbitrageCheckIntervalTicks
@@ -541,5 +683,100 @@ public final class PluginConfig {
                 + ", arbitrageLogFile='" + arbitrageLogFile + "'"
                 + ", arbitrageLogLevel='" + arbitrageLogLevel + "'"
                 + '}';
+    }
+
+    private static Map<String, AtmFeeProfile> defaultAtmFeeProfiles() {
+        Map<String, AtmFeeProfile> defaults = new HashMap<>();
+        defaults.put("IRON_BLOCK", new AtmFeeProfile(
+                "iron",
+                new BigDecimal("0.0008"),
+                new BigDecimal("0.0012"),
+                new BigDecimal("0.65"),
+                new BigDecimal("0.35")
+        ));
+        defaults.put("DIAMOND_BLOCK", new AtmFeeProfile(
+                "diamond",
+                new BigDecimal("0.0005"),
+                new BigDecimal("0.0008"),
+                new BigDecimal("0.25"),
+                new BigDecimal("0.75")
+        ));
+        defaults.put("NETHERITE_BLOCK", new AtmFeeProfile(
+                "netherite",
+                new BigDecimal("0.0003"),
+                new BigDecimal("0.0005"),
+                new BigDecimal("0.10"),
+                new BigDecimal("0.90")
+        ));
+        return defaults;
+    }
+
+    private static Map<String, AtmFeeProfile> indexByGrade(Map<String, AtmFeeProfile> byBlock) {
+        Map<String, AtmFeeProfile> byGrade = new HashMap<>();
+        byBlock.values().forEach(profile -> {
+            if (profile != null && profile.getGrade() != null) {
+                byGrade.put(profile.getGrade(), profile);
+            }
+        });
+        return byGrade;
+    }
+
+    private static void validateShare(String key, BigDecimal value) {
+        if (value.compareTo(BigDecimal.ZERO) < 0 || value.compareTo(BigDecimal.ONE) > 0) {
+            throw new IllegalArgumentException("config.yml: " + key + " は 0.0 以上 1.0 以下にしてください: " + value);
+        }
+    }
+
+    public static final class AtmFeeProfile {
+        private final String grade;
+        private final BigDecimal makerRate;
+        private final BigDecimal takerRate;
+        private final BigDecimal ownerShare;
+        private final BigDecimal treasuryShare;
+
+        private AtmFeeProfile(
+                String grade,
+                BigDecimal makerRate,
+                BigDecimal takerRate,
+                BigDecimal ownerShare,
+                BigDecimal treasuryShare
+        ) {
+            this.grade = grade;
+            this.makerRate = makerRate;
+            this.takerRate = takerRate;
+            this.ownerShare = ownerShare;
+            this.treasuryShare = treasuryShare;
+        }
+
+        public String getGrade() {
+            return grade;
+        }
+
+        public BigDecimal getMakerRate() {
+            return makerRate;
+        }
+
+        public BigDecimal getTakerRate() {
+            return takerRate;
+        }
+
+        public BigDecimal getOwnerShare() {
+            return ownerShare;
+        }
+
+        public BigDecimal getTreasuryShare() {
+            return treasuryShare;
+        }
+
+        @Override
+        public String toString() {
+            return "AtmFeeProfile{"
+                    + "grade='" + grade + '\''
+                    + ", makerRate=" + makerRate
+                    + ", takerRate=" + takerRate
+                    + ", ownerShare=" + ownerShare
+                    + ", treasuryShare=" + treasuryShare
+                    + '}';
+        }
     }
 }

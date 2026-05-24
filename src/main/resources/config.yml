@@ -59,6 +59,41 @@ serviceAccounts:
   - market-bot-1
   - arbitrage
 
+# ─── ATM（取引ブロック定義）────────────────────────────────────────
+# ブロックID（Material名）ごとに、グレード名・手数料率・配分率を定義する。
+# キーは Minecraft の Material 名（大文字）を使用すること。
+atm:
+  block-grades:
+    IRON_BLOCK:
+      grade: "iron"
+      maker: "0.0008"
+      taker: "0.0012"
+      owner-share: "0.65"
+      treasury-share: "0.35"
+
+    DIAMOND_BLOCK:
+      grade: "diamond"
+      maker: "0.0005"
+      taker: "0.0008"
+      owner-share: "0.25"
+      treasury-share: "0.75"
+
+    NETHERITE_BLOCK:
+      grade: "netherite"
+      maker: "0.0003"
+      taker: "0.0005"
+      owner-share: "0.10"
+      treasury-share: "0.90"
+
+  # ATM 構造判定: 看板中心の (2N+1)^3 範囲を走査する半径 N。
+  block-scan-radius: 3
+
+  # 上記範囲内で必要な同種ブロック数の最小値。
+  required-matching-blocks: 11
+
+  # [FX] 看板どうしの近接設置禁止半径（XYZ）。
+  fx-sign-exclusion-radius: 3
+
 # ─── 裁定取引（Arbitrage） ─────────────────────────────────────────────
 arbitrage:
   enabled: false

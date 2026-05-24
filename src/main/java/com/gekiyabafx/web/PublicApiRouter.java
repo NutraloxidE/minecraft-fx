@@ -1,5 +1,7 @@
 package com.gekiyabafx.web;
 
+import com.gekiyabafx.atm.AtmSessionManager;
+import com.gekiyabafx.auth.SessionManager;
 import com.gekiyabafx.config.PluginConfig;
 import com.gekiyabafx.model.Execution;
 import com.gekiyabafx.model.Order;
@@ -37,14 +39,23 @@ public final class PublicApiRouter {
 
     private final ExecutionRepository executionRepo;
     private final PluginConfig pluginConfig;
+    private final SessionManager playerSessionManager;
+    private final AtmSessionManager atmSessionManager;
 
     /**
      * @param executionRepo 約定履歴リポジトリ（H2）
      * @param pluginConfig  手数料率参照用
      */
-    public PublicApiRouter(ExecutionRepository executionRepo, PluginConfig pluginConfig) {
+    public PublicApiRouter(
+            ExecutionRepository executionRepo,
+            PluginConfig pluginConfig,
+            SessionManager playerSessionManager,
+            AtmSessionManager atmSessionManager
+    ) {
         this.executionRepo = executionRepo;
         this.pluginConfig  = pluginConfig;
+        this.playerSessionManager = playerSessionManager;
+        this.atmSessionManager = atmSessionManager;
     }
 
     /**
@@ -166,12 +177,42 @@ public final class PublicApiRouter {
             takerQuote = globalTaker;
         }
 
+        // プレイヤー認証済みかつ ATM セッション有効なら、そのグレードに実適用される率を返す。
+        String effectiveSource = "global";
+        String effectiveGrade = null;
+        String effectiveAtmId = null;
+        String header = ctx.header("Authorization");
+        if (header != null && header.startsWith("Bearer ")) {
+            String token = header.substring(7).trim();
+            SessionManager.SessionEntry entry = playerSessionManager.resolve(token);
+            if (entry != null) {
+                var atmState = atmSessionManager.getStateByToken(token, entry.getIdentity());
+                if (atmState != null && atmState.isActive()) {
+                    PluginConfig.AtmFeeProfile profile = pluginConfig.findAtmFeeProfileByGrade(atmState.getGrade());
+                    if (profile != null) {
+                        makerBase = profile.getMakerRate();
+                        takerBase = profile.getTakerRate();
+                        makerQuote = profile.getMakerRate();
+                        takerQuote = profile.getTakerRate();
+                        effectiveSource = "atm";
+                        effectiveGrade = profile.getGrade();
+                        effectiveAtmId = atmState.getAtmId();
+                    }
+                }
+            }
+        }
+
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("pair",        rawId);
         resp.put("maker_base",  feeStr(makerBase));
         resp.put("taker_base",  feeStr(takerBase));
         resp.put("maker_quote", feeStr(makerQuote));
         resp.put("taker_quote", feeStr(takerQuote));
+        resp.put("effective_source", effectiveSource);
+        resp.put("effective_grade", effectiveGrade);
+        resp.put("effective_atm_id", effectiveAtmId);
+        resp.put("global_maker", feeStr(globalMaker));
+        resp.put("global_taker", feeStr(globalTaker));
         ctx.status(200).json(resp);
     }
 

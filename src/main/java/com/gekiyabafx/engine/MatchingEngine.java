@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Price-Time Priority マッチングエンジン。
@@ -89,6 +90,9 @@ public final class MatchingEngine {
             String atmGrade
         ) throws InsufficientBalanceException {
 
+            incoming.setAtmId(atmId);
+            incoming.setAtmGrade(atmGrade);
+
         // ① 残高をロックする
         lockBalance(pairId, pair, incoming, data);
 
@@ -97,9 +101,9 @@ public final class MatchingEngine {
         BigDecimal spentQuote = BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP);
 
         if (incoming.getSide() == OrderSide.BUY) {
-            spentQuote = matchBuy(pairId, pair, incoming, data, newExecs, config, atmId, atmGrade);
+            spentQuote = matchBuy(pairId, pair, incoming, data, newExecs, config);
         } else {
-            matchSell(pairId, pair, incoming, data, newExecs, config, atmId, atmGrade);
+            matchSell(pairId, pair, incoming, data, newExecs, config);
         }
 
         long now = Instant.now().getEpochSecond();
@@ -262,8 +266,7 @@ public final class MatchingEngine {
      */
     private static BigDecimal matchBuy(
             String pairId, Pair pair, Order buy,
-            StorageData data, List<Execution> execs, PluginConfig config,
-            String atmId, String atmGrade
+            StorageData data, List<Execution> execs, PluginConfig config
     ) {
         BigDecimal spentQuote = BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP);
         Iterator<Order> it = pair.getOrderBook().getAsks().iterator();
@@ -305,7 +308,7 @@ public final class MatchingEngine {
             settle(pairId, pair, buy, ask, execPrice, execAmount, data, config, true);
             spentQuote = spentQuote.add(
                     execPrice.multiply(execAmount).setScale(4, RoundingMode.HALF_UP));
-            execs.add(new Execution(now, execPrice, execAmount, atmId, atmGrade));
+                execs.add(new Execution(now, execPrice, execAmount, buy.getAtmId(), buy.getAtmGrade()));
 
             // ask が全量約定したら板から除去
             if (ask.getRemainingAmount().compareTo(BigDecimal.ZERO) == 0) {
@@ -342,8 +345,7 @@ public final class MatchingEngine {
      */
     private static void matchSell(
             String pairId, Pair pair, Order sell,
-            StorageData data, List<Execution> execs, PluginConfig config,
-            String atmId, String atmGrade
+            StorageData data, List<Execution> execs, PluginConfig config
     ) {
         Iterator<Order> it = pair.getOrderBook().getBids().iterator();
         long now = Instant.now().getEpochSecond();
@@ -365,7 +367,7 @@ public final class MatchingEngine {
             if (execAmount.compareTo(BigDecimal.ZERO) <= 0) break;
 
             settle(pairId, pair, bid, sell, execPrice, execAmount, data, config, false);
-            execs.add(new Execution(now, execPrice, execAmount, atmId, atmGrade));
+            execs.add(new Execution(now, execPrice, execAmount, sell.getAtmId(), sell.getAtmGrade()));
 
             // bid が全量約定したら板から除去
             if (bid.getRemainingAmount().compareTo(BigDecimal.ZERO) == 0) {
@@ -407,13 +409,22 @@ public final class MatchingEngine {
         String quote = pair.getQuote();
         BigDecimal cost = execPrice.multiply(execAmount).setScale(4, RoundingMode.HALF_UP);
 
+        PluginConfig.AtmFeeProfile buyProfile = resolveAtmFeeProfile(config, buy);
+        PluginConfig.AtmFeeProfile sellProfile = resolveAtmFeeProfile(config, sell);
+
         // ─── 手数料率の決定 ───────────────────────────────────────────────────
-        // buy（base 受取）側の手数料率: buy が Taker なら taker レート、Maker なら maker レート
-        BigDecimal buyFeeRate = config.resolveFeeRate(base,
-                isBuyTaker ? config.getFeeTaker() : config.getFeeMaker());
-        // sell（quote 受取）側の手数料率: sell が Taker なら taker レート、Maker なら maker レート
-        BigDecimal sellFeeRate = config.resolveFeeRate(quote,
-                isBuyTaker ? config.getFeeMaker() : config.getFeeTaker());
+        BigDecimal buyFeeRate = resolveEffectiveFeeRate(
+            config,
+            base,
+            isBuyTaker,
+            buyProfile
+        );
+        BigDecimal sellFeeRate = resolveEffectiveFeeRate(
+            config,
+            quote,
+            !isBuyTaker,
+            sellProfile
+        );
 
         // ─── 手数料額の計算 ───────────────────────────────────────────────────
         BigDecimal baseFee  = execAmount.multiply(buyFeeRate).setScale(4, RoundingMode.HALF_UP);
@@ -445,27 +456,96 @@ public final class MatchingEngine {
                           .setScale(4, RoundingMode.HALF_UP));
         }
 
-        // ─── treasury-fee への手数料振り込み ─────────────────────────────────
-        final String TREASURY_ID = "svc:treasury-fee";
-        PlayerData treasury = data.getPlayers().get(TREASURY_ID);
-        if (treasury == null) {
-            treasury = new PlayerData("[SERVICE] treasury-fee");
-            data.getPlayers().put(TREASURY_ID, treasury);
-        }
-        if (baseFee.compareTo(BigDecimal.ZERO) > 0) {
-            treasury.setHotBalance(base,
-                    treasury.getHotBalance(base).add(baseFee)
-                            .setScale(4, RoundingMode.HALF_UP));
-        }
-        if (quoteFee.compareTo(BigDecimal.ZERO) > 0) {
-            treasury.setHotBalance(quote,
-                    treasury.getHotBalance(quote).add(quoteFee)
-                            .setScale(4, RoundingMode.HALF_UP));
-        }
+        // ─── 手数料の配分（ATM owner / treasury-fee）─────────────────────────
+        allocateFee(data, buy, base, baseFee, buyProfile);
+        allocateFee(data, sell, quote, quoteFee, sellProfile);
 
         // ─── 約定済み数量を更新 ───────────────────────────────────────────────
         buy.setFilled(buy.getFilled().add(execAmount).setScale(4, RoundingMode.HALF_UP));
         sell.setFilled(sell.getFilled().add(execAmount).setScale(4, RoundingMode.HALF_UP));
+    }
+
+    private static BigDecimal resolveEffectiveFeeRate(
+            PluginConfig config,
+            String currency,
+            boolean isTaker,
+            PluginConfig.AtmFeeProfile profile
+    ) {
+        if (profile != null) {
+            return isTaker ? profile.getTakerRate() : profile.getMakerRate();
+        }
+        return config.resolveFeeRate(currency, isTaker ? config.getFeeTaker() : config.getFeeMaker());
+    }
+
+    private static PluginConfig.AtmFeeProfile resolveAtmFeeProfile(PluginConfig config, Order order) {
+        if (order == null) {
+            return null;
+        }
+        return config.findAtmFeeProfileByGrade(order.getAtmGrade());
+    }
+
+    private static void allocateFee(
+            StorageData data,
+            Order order,
+            String item,
+            BigDecimal totalFee,
+            PluginConfig.AtmFeeProfile profile
+    ) {
+        if (totalFee == null || totalFee.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        AtmData atm = resolveActiveAtm(data, order == null ? null : order.getAtmId());
+        BigDecimal ownerShare = (profile != null && atm != null) ? profile.getOwnerShare() : BigDecimal.ZERO;
+        BigDecimal ownerFee = totalFee.multiply(ownerShare).setScale(4, RoundingMode.HALF_UP);
+        BigDecimal treasuryFee = totalFee.subtract(ownerFee).setScale(4, RoundingMode.HALF_UP);
+
+        if (atm != null && ownerFee.compareTo(BigDecimal.ZERO) > 0) {
+            PlayerData owner = data.getPlayers().get(atm.getOwnerId());
+            if (owner != null) {
+                owner.setHotBalance(item,
+                        owner.getHotBalance(item).add(ownerFee).setScale(4, RoundingMode.HALF_UP));
+                addAtmEarning(atm.getPendingPayout(), item, ownerFee);
+                addAtmEarning(atm.getTotalFeesEarned(), item, ownerFee);
+            } else {
+                treasuryFee = treasuryFee.add(ownerFee).setScale(4, RoundingMode.HALF_UP);
+            }
+        }
+
+        creditTreasury(data, item, treasuryFee);
+    }
+
+    private static AtmData resolveActiveAtm(StorageData data, String atmId) {
+        if (atmId == null || atmId.isBlank()) {
+            return null;
+        }
+        AtmData atm = data.getAtmRegistry().getById(atmId);
+        if (atm == null || !"active".equalsIgnoreCase(atm.getStatus())) {
+            return null;
+        }
+        return atm;
+    }
+
+    private static void addAtmEarning(Map<String, Double> map, String item, BigDecimal amount) {
+        if (map == null || item == null || amount == null) {
+            return;
+        }
+        double current = map.getOrDefault(item, 0.0d);
+        map.put(item, current + amount.doubleValue());
+    }
+
+    private static void creditTreasury(StorageData data, String item, BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        final String treasuryId = "svc:treasury-fee";
+        PlayerData treasury = data.getPlayers().get(treasuryId);
+        if (treasury == null) {
+            treasury = new PlayerData("[SERVICE] treasury-fee");
+            data.getPlayers().put(treasuryId, treasury);
+        }
+        treasury.setHotBalance(item,
+                treasury.getHotBalance(item).add(amount).setScale(4, RoundingMode.HALF_UP));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -106,11 +106,16 @@ export interface PairFeeResponse {
   taker_base:  string
   maker_quote: string
   taker_quote: string
+  effective_source?: string
+  effective_grade?: string | null
+  effective_atm_id?: string | null
+  global_maker?: string
+  global_taker?: string
 }
 
 /** 指定ペアの手数料率を取得する */
 export const fetchPairFee = (pairId: string): Promise<PairFeeResponse> =>
-  request('GET', `/api/pairs/${encodeURIComponent(pairId)}/fee`, null)
+  request('GET', `/api/pairs/${encodeURIComponent(pairId)}/fee`, getPlayerToken())
 
 /** 指定ペアのオーダーブック（板）を取得する */
 export const fetchOrderBook = (pairId: string): Promise<OrderBookResponse> =>

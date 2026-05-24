@@ -303,7 +303,7 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
           <div className="order-fee-info">
             {feeAmt
               ? <>予想手数料 (Taker {rateLabel}): <strong>{feeAmt} {isBuy ? base : quote}</strong></>
-              : `手数料率 (Taker): ${rateLabel}`}
+              : `最大手数料率 (Taker): ${rateLabel}`}
           </div>
         )
       })()}

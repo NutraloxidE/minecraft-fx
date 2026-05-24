@@ -3,6 +3,7 @@ package com.gekiyabafx.listener;
 import com.gekiyabafx.GekiyabaFXPlugin;
 import com.gekiyabafx.atm.AtmSessionManager;
 import com.gekiyabafx.auth.OtpManager;
+import com.gekiyabafx.config.PluginConfig;
 import com.gekiyabafx.model.AtmData;
 import com.gekiyabafx.model.PlayerData;
 import com.gekiyabafx.model.StorageData;
@@ -47,9 +48,6 @@ public final class AtmSignListener implements Listener {
     private static final double MAX_DISTANCE_BLOCKS = 3.0;
     private static final long OCCUPY_TIMEOUT_MS = 600_000L;
     private static final String OCCUPIED_MARKER_TAG = "atm-occupied-marker";
-    private static final int ATM_BLOCK_SCAN_RADIUS = 3;
-    private static final int REQUIRED_MATCHING_BLOCKS = 11;
-    private static final int FX_SIGN_EXCLUSION_RADIUS = 3;
 
     private final GekiyabaFXPlugin plugin;
     private final OtpManager playerOtpManager;
@@ -79,8 +77,10 @@ public final class AtmSignListener implements Listener {
         int sy = signBlock.getY();
         int sz = signBlock.getZ();
 
-        if (hasNearbyFxSign(world, sx, sy, sz)) {
-            player.sendMessage("§c[FX] Cannot place ATM sign: another [FX] sign exists within 3 blocks (XYZ).");
+        int signExclusionRadius = plugin.getPluginConfig().getAtmFxSignExclusionRadius();
+        if (hasNearbyFxSign(world, sx, sy, sz, signExclusionRadius)) {
+            player.sendMessage("§c[FX] Cannot place ATM sign: another [FX] sign exists within "
+                    + signExclusionRadius + " blocks (XYZ).");
             event.setCancelled(true);
             return;
         }
@@ -92,14 +92,25 @@ public final class AtmSignListener implements Listener {
             return;
         }
 
-        String grade = determineGrade(atmBaseBlock);
+        PluginConfig.AtmFeeProfile feeProfile = plugin.getPluginConfig()
+            .findAtmFeeProfileByBlockType(atmBaseBlock.getType().name());
+        String grade = determineGrade(feeProfile);
         if ("none".equals(grade)) {
-            player.sendMessage("§c[FX] Block behind sign must be IRON_BLOCK, DIAMOND_BLOCK, or NETHERITE_BLOCK.");
+            player.sendMessage("§c[FX] Block behind sign is not allowed by config (atm.block-grades).");
             event.setCancelled(true);
             return;
         }
 
-        if (!validateStructure(world, sx, sy, sz, atmBaseBlock.getType(), player)) {
+        if (!validateStructure(
+                world,
+                sx,
+                sy,
+                sz,
+                atmBaseBlock.getType(),
+                player,
+                plugin.getPluginConfig().getAtmBlockScanRadius(),
+                plugin.getPluginConfig().getAtmRequiredMatchingBlocks()
+        )) {
             event.setCancelled(true);
             return;
         }
@@ -151,8 +162,8 @@ public final class AtmSignListener implements Listener {
             sm.registerAtm(atm);
 
             event.setLine(1, owner.ownerName + " ATM");
-            event.setLine(2, "Maker: " + feeLabel(grade, true));
-            event.setLine(3, "Taker: " + feeLabel(grade, false));
+            event.setLine(2, "Maker: " + feeLabel(feeProfile.getMakerRate()));
+            event.setLine(3, "Taker: " + feeLabel(feeProfile.getTakerRate()));
 
             player.sendMessage("§a[FX] ATM created! Grade: " + grade.toUpperCase(Locale.ROOT) + " | Owner: " + owner.ownerName);
             sm.markDirty();
@@ -419,21 +430,27 @@ public final class AtmSignListener implements Listener {
         }
     }
 
-    private static String determineGrade(Block centerBlock) {
-        Material type = centerBlock.getType();
-        return switch (type) {
-            case IRON_BLOCK -> "iron";
-            case DIAMOND_BLOCK -> "diamond";
-            case NETHERITE_BLOCK -> "netherite";
-            default -> "none";
-        };
+    private static String determineGrade(PluginConfig.AtmFeeProfile feeProfile) {
+        if (feeProfile == null || feeProfile.getGrade() == null || feeProfile.getGrade().isBlank()) {
+            return "none";
+        }
+        return feeProfile.getGrade();
     }
 
-    private static boolean validateStructure(World world, int sx, int sy, int sz, Material targetType, Player player) {
+    private static boolean validateStructure(
+            World world,
+            int sx,
+            int sy,
+            int sz,
+            Material targetType,
+            Player player,
+            int scanRadius,
+            int requiredMatchingBlocks
+    ) {
         int matchCount = 0;
-        for (int dx = -ATM_BLOCK_SCAN_RADIUS; dx <= ATM_BLOCK_SCAN_RADIUS; dx++) {
-            for (int dy = -ATM_BLOCK_SCAN_RADIUS; dy <= ATM_BLOCK_SCAN_RADIUS; dy++) {
-                for (int dz = -ATM_BLOCK_SCAN_RADIUS; dz <= ATM_BLOCK_SCAN_RADIUS; dz++) {
+        for (int dx = -scanRadius; dx <= scanRadius; dx++) {
+            for (int dy = -scanRadius; dy <= scanRadius; dy++) {
+                for (int dz = -scanRadius; dz <= scanRadius; dz++) {
                     Block b = world.getBlockAt(sx + dx, sy + dy, sz + dz);
                     if (b.getType() == targetType) {
                         matchCount++;
@@ -442,9 +459,11 @@ public final class AtmSignListener implements Listener {
             }
         }
 
-        if (matchCount < REQUIRED_MATCHING_BLOCKS) {
-            player.sendMessage("§c[FX] ATM requires at least " + REQUIRED_MATCHING_BLOCKS
-                    + " matching blocks (" + targetType.name() + ") within 7x7x7 area.");
+        if (matchCount < requiredMatchingBlocks) {
+            int cubeSize = (scanRadius * 2) + 1;
+            player.sendMessage("§c[FX] ATM requires at least " + requiredMatchingBlocks
+                    + " matching blocks (" + targetType.name() + ") within "
+                    + cubeSize + "x" + cubeSize + "x" + cubeSize + " area.");
             return false;
         }
 
@@ -468,10 +487,10 @@ public final class AtmSignListener implements Listener {
         return signBlock.getRelative(facing.getOppositeFace());
     }
 
-    private static boolean hasNearbyFxSign(World world, int sx, int sy, int sz) {
-        for (int dx = -FX_SIGN_EXCLUSION_RADIUS; dx <= FX_SIGN_EXCLUSION_RADIUS; dx++) {
-            for (int dy = -FX_SIGN_EXCLUSION_RADIUS; dy <= FX_SIGN_EXCLUSION_RADIUS; dy++) {
-                for (int dz = -FX_SIGN_EXCLUSION_RADIUS; dz <= FX_SIGN_EXCLUSION_RADIUS; dz++) {
+    private static boolean hasNearbyFxSign(World world, int sx, int sy, int sz, int exclusionRadius) {
+        for (int dx = -exclusionRadius; dx <= exclusionRadius; dx++) {
+            for (int dy = -exclusionRadius; dy <= exclusionRadius; dy++) {
+                for (int dz = -exclusionRadius; dz <= exclusionRadius; dz++) {
                     if (dx == 0 && dy == 0 && dz == 0) {
                         continue;
                     }
@@ -500,13 +519,13 @@ public final class AtmSignListener implements Listener {
         return type.isSolid();
     }
 
-    private static String feeLabel(String grade, boolean maker) {
-        return switch (grade) {
-            case "iron" -> maker ? "0.080%" : "0.120%";
-            case "diamond" -> maker ? "0.050%" : "0.080%";
-            case "netherite" -> maker ? "0.030%" : "0.050%";
-            default -> maker ? "0.100%" : "0.160%";
-        };
+    private static String feeLabel(java.math.BigDecimal rate) {
+        if (rate == null) {
+            return "0.000%";
+        }
+        return rate.multiply(new java.math.BigDecimal("100"))
+                .setScale(3, java.math.RoundingMode.HALF_UP)
+                .toPlainString() + "%";
     }
 
     private static ResolvedOwner resolveOwner(String ownerInput, StorageData data) {

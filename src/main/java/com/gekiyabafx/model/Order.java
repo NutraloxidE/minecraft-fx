@@ -85,6 +85,12 @@ public final class Order {
      */
     private long closedAt;
 
+    /** 注文時に紐付いた ATM ID（ATM 未使用なら null）。 */
+    private String atmId;
+
+    /** 注文時に紐付いた ATM grade（ATM 未使用なら null）。 */
+    private String atmGrade;
+
     /** GSON デシリアライズ用のデフォルトコンストラクタ。 */
     public Order() {}
 
@@ -136,6 +142,8 @@ public final class Order {
     public OrderStatus getStatus()    { return status; }
     public long getCreatedAt()        { return createdAt; }
     public long getClosedAt()         { return closedAt; }
+    public String getAtmId()          { return atmId; }
+    public String getAtmGrade()       { return atmGrade; }
 
     // ─── セッター ──────────────────────────────────────────────────────────────
 
@@ -150,6 +158,8 @@ public final class Order {
     public void setStatus(OrderStatus status)     { this.status = status; }
     public void setCreatedAt(long createdAt)      { this.createdAt = createdAt; }
     public void setClosedAt(long closedAt)        { this.closedAt = closedAt; }
+    public void setAtmId(String atmId)            { this.atmId = atmId; }
+    public void setAtmGrade(String atmGrade)      { this.atmGrade = atmGrade; }
 
     // ─── ユーティリティ ────────────────────────────────────────────────────────
 
