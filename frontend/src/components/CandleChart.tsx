@@ -34,6 +34,8 @@ export default function CandleChart({ pairId, contextMenuItems = [], onSetPrice 
     open: number; high: number; low: number; close: number
   } | null>(null)
   const candleDataRef = useRef<CandlestickData<Time>[]>([])
+  const prevPairIdRef = useRef<string | null>(null)
+  const prevTfSecRef = useRef<number>(60)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: number | null; closePrice: number | null } | null>(null)
 
   const { executions, loading, resetCacheAndReload } = useExecutionCache(pairId)
@@ -105,6 +107,9 @@ export default function CandleChart({ pairId, contextMenuItems = [], onSetPrice 
   // executions または時間足が変わったらローソク足を再集計してセットする
   useEffect(() => {
     if (!seriesRef.current) return
+    const pairChanged = prevPairIdRef.current !== pairId
+    const tfChanged = prevTfSecRef.current !== tfSec
+
     const candles = aggregateCandles(executions, tfSec)
     const data: CandlestickData<Time>[] = candles.map((c) => ({
       time:  c.time as Time,
@@ -115,9 +120,14 @@ export default function CandleChart({ pairId, contextMenuItems = [], onSetPrice 
     }))
     seriesRef.current.setData(data)
     candleDataRef.current = data
-    if (data.length > 0) {
+
+    // 約定の増減だけではズームを維持し、初回表示・ペア切替・時間足切替時のみ表示範囲を整える。
+    if (data.length > 0 && (pairChanged || tfChanged)) {
       chartRef.current?.timeScale().fitContent()
     }
+
+    prevPairIdRef.current = pairId
+    prevTfSecRef.current = tfSec
   }, [executions, tfSec])
 
   const changeRate = hoveredCandle
