@@ -32,6 +32,9 @@ dependencies {
     // Javalin本体（JettyおよびSLF4Jを推移的に含む）
     implementation("io.javalin:javalin:6.3.0")
 
+    // Javalin の JSON シリアライズ/デシリアライズに必要
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
+
     // Javalinが内部でSLF4Jを使うため、実装としてSimpleLoggerを同梱する
     implementation("org.slf4j:slf4j-simple:2.0.13")
 

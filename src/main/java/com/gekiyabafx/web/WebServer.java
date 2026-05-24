@@ -4,6 +4,7 @@ import com.gekiyabafx.GekiyabaFXPlugin;
 import com.gekiyabafx.config.PluginConfig;
 import io.javalin.Javalin;
 import io.javalin.http.staticfiles.Location;
+import io.javalin.json.JavalinJackson;
 
 import java.util.logging.Logger;
 
@@ -47,6 +48,10 @@ public final class WebServer {
         this.logger   = plugin.getLogger();
 
         app = Javalin.create(config -> {
+
+            // ── JSON マッパー ───────────────────────────────────────────────
+            // bodyAsClass / ctx.json で Jackson を利用する。
+            config.jsonMapper(new JavalinJackson());
 
             // ── CORS ─────────────────────────────────────────────────────────
             config.bundledPlugins.enableCors(cors ->
