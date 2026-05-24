@@ -34,3 +34,10 @@ Thumbs.db
 
 build-log.txt
 *.class
+
+# Local machine-specific scripts/settings (contain local username paths)
+.vscode/tasks.json
+build-and-deploy-to-realenv.bat
+build-and-deploy.bat
+run-database-updater.bat
+run-tests.bat
