@@ -22,6 +22,7 @@ frontend/dist/
 /dist/
 /out/
 
+deploy-to-realenv.bat
 
 # Paper server (テスト環境 - リポジトリ管理外)
 paper-server/

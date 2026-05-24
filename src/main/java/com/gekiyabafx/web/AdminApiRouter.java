@@ -85,6 +85,8 @@ public final class AdminApiRouter {
         app.post  ("/api/admin/pairs",              this::handleCreatePair);
         app.patch ("/api/admin/pairs/{id}",         this::handlePatchPair);
         app.delete("/api/admin/pairs/{id}",         this::handleDeletePair);
+        app.get   ("/api/admin/web-settings",       this::handleGetWebSettings);
+        app.patch ("/api/admin/web-settings",       this::handlePatchWebSettings);
         app.get   ("/api/admin/service-accounts",   this::handleServiceAccounts);
         app.get   ("/api/admin/backup/download",    this::handleDownloadServerBackup);
         app.patch ("/api/admin/arbitrage/toggle",   this::handleArbitrageToggle);
@@ -445,6 +447,56 @@ public final class AdminApiRouter {
     private static String bdStr(BigDecimal bd) {
         if (bd == null) return "0.0000";
         return bd.setScale(4, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  GET/PATCH /api/admin/web-settings
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void handleGetWebSettings(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+        ctx.status(200).json(Map.of(
+                "server_ip", plugin.getPluginConfig().getServerIp(),
+                "web_port", plugin.getPluginConfig().getWebPort()
+        ));
+    }
+
+    private void handlePatchWebSettings(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        Map<String, Object> body = parseBody(ctx);
+        if (body == null) return;
+
+        String serverIp = getString(body, "server_ip");
+        if (serverIp == null || serverIp.isBlank()) {
+            ctx.status(400).json(Map.of("error", "invalid_server_ip"));
+            return;
+        }
+
+        String normalized = serverIp.trim();
+        if (normalized.length() > 255 || normalized.contains(" ")) {
+            ctx.status(400).json(Map.of("error", "invalid_server_ip"));
+            return;
+        }
+
+        try {
+            plugin.getConfig().set("server-ip", normalized);
+            plugin.saveConfig();
+            plugin.reloadPluginConfig();
+        } catch (IllegalArgumentException e) {
+            ctx.status(400).json(Map.of("error", "invalid_server_ip", "message", e.getMessage()));
+            return;
+        } catch (Exception e) {
+            plugin.getLogger().warning("server-ip の更新に失敗しました: " + e.getMessage());
+            ctx.status(500).json(Map.of("error", "web_settings_update_failed"));
+            return;
+        }
+
+        ctx.status(200).json(Map.of(
+                "server_ip", plugin.getPluginConfig().getServerIp(),
+                "web_port", plugin.getPluginConfig().getWebPort(),
+                "updated", true
+        ));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

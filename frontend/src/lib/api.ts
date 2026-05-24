@@ -235,6 +235,23 @@ export const adminPatchPair = (id: string, req: PatchPairRequest): Promise<Admin
 export const adminDeletePair = (id: string): Promise<{ id: string; deleted: boolean }> =>
   request('DELETE', `/api/admin/pairs/${encodeURIComponent(id)}`, getAdminToken())
 
+export interface AdminWebSettingsResponse {
+  server_ip: string
+  web_port: number
+}
+
+export interface AdminPatchWebSettingsResponse extends AdminWebSettingsResponse {
+  updated: boolean
+}
+
+/** ログインリンク生成に使うWeb設定を取得する */
+export const adminFetchWebSettings = (): Promise<AdminWebSettingsResponse> =>
+  request('GET', '/api/admin/web-settings', getAdminToken())
+
+/** ログインリンク生成に使う server-ip を更新する */
+export const adminPatchWebSettings = (serverIp: string): Promise<AdminPatchWebSettingsResponse> =>
+  request('PATCH', '/api/admin/web-settings', getAdminToken(), { server_ip: serverIp })
+
 export interface ArbitrageSkipRecord {
   pair: string
   reason: string

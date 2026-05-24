@@ -17,6 +17,8 @@ import {
   adminPatchPair,
   adminDeletePair,
   adminFetchServiceAccounts,
+  adminFetchWebSettings,
+  adminPatchWebSettings,
   adminFetchArbitrageStatus,
   adminToggleArbitrage,
   adminDownloadServerBackup,
@@ -27,7 +29,7 @@ import {
   DEBUG_ARBITRAGE_STATUS,
 } from '@/lib/debugData'
 import type { AdminPair, CreatePairRequest } from '@/types/api'
-import type { ServiceAccount, ArbitrageStatusResponse } from '@/lib/api'
+import type { ServiceAccount, ArbitrageStatusResponse, AdminWebSettingsResponse } from '@/lib/api'
 
 // ─── ペア作成フォーム ──────────────────────────────────────────────────────────
 
@@ -311,6 +313,105 @@ function BackupDownloadPanel({ isDebug }: { isDebug: boolean }) {
       <button className="admin-submit-btn" onClick={handleDownload} disabled={downloading}>
         {downloading ? 'バックアップ生成中...' : 'ワールド + GekiyabaFX データをZIPでダウンロード'}
       </button>
+      {msg && <p className={`admin-msg ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</p>}
+    </div>
+  )
+}
+
+function LoginLinkSettingsPanel({ isDebug }: { isDebug: boolean }) {
+  const [settings, setSettings] = useState<AdminWebSettingsResponse | null>(null)
+  const [serverIpInput, setServerIpInput] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setMsg(null)
+    try {
+      if (isDebug) {
+        const debugSettings: AdminWebSettingsResponse = { server_ip: '127.0.0.1', web_port: 3010 }
+        setSettings(debugSettings)
+        setServerIpInput(debugSettings.server_ip)
+      } else {
+        const res = await adminFetchWebSettings()
+        setSettings(res)
+        setServerIpInput(res.server_ip)
+      }
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      setMsg({ text: err.message ?? 'Web設定の取得に失敗しました', ok: false })
+    } finally {
+      setLoading(false)
+    }
+  }, [isDebug])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const handleSave = async () => {
+    if (!serverIpInput.trim()) {
+      setMsg({ text: 'server-ip を入力してください', ok: false })
+      return
+    }
+
+    if (isDebug) {
+      setSettings((prev) => ({ server_ip: serverIpInput.trim(), web_port: prev?.web_port ?? 3010 }))
+      setMsg({ text: `[DEBUG] server-ip を ${serverIpInput.trim()} に更新したことにします`, ok: true })
+      return
+    }
+
+    setSaving(true)
+    setMsg(null)
+    try {
+      const updated = await adminPatchWebSettings(serverIpInput.trim())
+      setSettings(updated)
+      setServerIpInput(updated.server_ip)
+      setMsg({ text: `保存しました。以後のログインURLは ${updated.server_ip}:${updated.web_port} を使います`, ok: true })
+    } catch (e: unknown) {
+      const err = e as { message?: string }
+      setMsg({ text: err.message ?? 'server-ip の更新に失敗しました', ok: false })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="admin-backup-panel">
+      <h3 className="admin-section-title">ログインリンク設定</h3>
+      <p className="admin-backup-desc">
+        /fx login と /fx admin で表示するURLのホスト名（グローバルIPまたはドメイン）を設定します。
+      </p>
+      {loading ? (
+        <p className="admin-loading">読み込み中...</p>
+      ) : (
+        <div className="admin-form-row">
+          <label>server-ip
+            <input
+              className="admin-input"
+              value={serverIpInput}
+              onChange={(e) => setServerIpInput(e.target.value)}
+              placeholder="例: 203.0.113.10 または fx.example.com"
+              disabled={saving}
+            />
+          </label>
+          <label>web-port
+            <input
+              className="admin-input"
+              value={settings?.web_port ?? ''}
+              disabled
+              readOnly
+            />
+          </label>
+          <button className="admin-submit-btn" type="button" onClick={handleSave} disabled={saving}>
+            {saving ? '保存中...' : '保存'}
+          </button>
+          <button className="admin-edit-btn" type="button" onClick={() => { void load() }} disabled={loading || saving}>
+            再読込
+          </button>
+        </div>
+      )}
       {msg && <p className={`admin-msg ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</p>}
     </div>
   )
@@ -602,6 +703,10 @@ export default function AdminPage() {
 
         <section className="admin-section">
           <BackupDownloadPanel isDebug={isDebug} />
+        </section>
+
+        <section className="admin-section">
+          <LoginLinkSettingsPanel isDebug={isDebug} />
         </section>
       </main>
     </div>
