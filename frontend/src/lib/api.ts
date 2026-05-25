@@ -286,26 +286,52 @@ export interface ArbitrageLastExecution {
   order_ids: string[]
 }
 
+export interface ArbitrageExecutionRecord {
+  pair: string
+  timestamp: string
+  status: string
+  order_ids: string[]
+  quantity: string
+  spread_pct: string
+  net_profit_pct: string
+}
+
 export interface ArbitrageStatusResponse {
   enabled: boolean
   service_account: string
   check_interval_ticks: number
+  min_gross_spread_pct: string
+  min_net_profit_pct: string
+  slip_price_change_threshold_pct: string
+  slip_volume_drop_threshold_pct: string
+  slip_check_lookback_ticks: number
   pairs_under_watch: string[]
   last_check: string | null
   last_execution: ArbitrageLastExecution | null
   recent_skips: ArbitrageSkipRecord[]
+  recent_executions: ArbitrageExecutionRecord[]
 }
 
 export interface ArbitrageToggleRequest {
   enabled?: boolean
   service_account?: string
   check_interval_ticks?: number
+  min_gross_spread_pct?: string
+  min_net_profit_pct?: string
+  slip_price_change_threshold_pct?: string
+  slip_volume_drop_threshold_pct?: string
+  slip_check_lookback_ticks?: number
 }
 
 export interface ArbitrageToggleResponse {
   enabled: boolean
   current_service_account: string
   current_check_interval_ticks: number
+  current_min_gross_spread_pct: string
+  current_min_net_profit_pct: string
+  current_slip_price_change_threshold_pct: string
+  current_slip_volume_drop_threshold_pct: string
+  current_slip_check_lookback_ticks: number
   timestamp: string
 }
 

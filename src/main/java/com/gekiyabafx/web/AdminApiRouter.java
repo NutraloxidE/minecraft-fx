@@ -901,6 +901,51 @@ public final class AdminApiRouter {
             }
         }
 
+        BigDecimal minGrossSpreadPct = null;
+        if (body.containsKey("min_gross_spread_pct")) {
+            minGrossSpreadPct = parseStrictBigDecimal(body.get("min_gross_spread_pct"));
+            if (minGrossSpreadPct == null || minGrossSpreadPct.compareTo(BigDecimal.ZERO) < 0) {
+                ctx.status(400).json(Map.of("error", "invalid_min_gross_spread_pct"));
+                return;
+            }
+        }
+
+        BigDecimal minNetProfitPct = null;
+        if (body.containsKey("min_net_profit_pct")) {
+            minNetProfitPct = parseStrictBigDecimal(body.get("min_net_profit_pct"));
+            if (minNetProfitPct == null || minNetProfitPct.compareTo(BigDecimal.ZERO) < 0) {
+                ctx.status(400).json(Map.of("error", "invalid_min_net_profit_pct"));
+                return;
+            }
+        }
+
+        BigDecimal slipPriceChangeThresholdPct = null;
+        if (body.containsKey("slip_price_change_threshold_pct")) {
+            slipPriceChangeThresholdPct = parseStrictBigDecimal(body.get("slip_price_change_threshold_pct"));
+            if (slipPriceChangeThresholdPct == null || slipPriceChangeThresholdPct.compareTo(BigDecimal.ZERO) < 0) {
+                ctx.status(400).json(Map.of("error", "invalid_slip_price_change_threshold_pct"));
+                return;
+            }
+        }
+
+        BigDecimal slipVolumeDropThresholdPct = null;
+        if (body.containsKey("slip_volume_drop_threshold_pct")) {
+            slipVolumeDropThresholdPct = parseStrictBigDecimal(body.get("slip_volume_drop_threshold_pct"));
+            if (slipVolumeDropThresholdPct == null || slipVolumeDropThresholdPct.compareTo(BigDecimal.ZERO) < 0) {
+                ctx.status(400).json(Map.of("error", "invalid_slip_volume_drop_threshold_pct"));
+                return;
+            }
+        }
+
+        Integer slipCheckLookbackTicks = null;
+        if (body.containsKey("slip_check_lookback_ticks")) {
+            slipCheckLookbackTicks = getInt(body, "slip_check_lookback_ticks");
+            if (slipCheckLookbackTicks == null || slipCheckLookbackTicks < 1) {
+                ctx.status(400).json(Map.of("error", "invalid_slip_check_lookback_ticks"));
+                return;
+            }
+        }
+
         String serviceAccount = getString(body, "service_account");
         if (serviceAccount != null && !serviceAccount.isBlank()) {
             if (!serviceAccount.startsWith("svc:")) {
@@ -914,23 +959,71 @@ public final class AdminApiRouter {
             }
         }
 
-            arbitrageService.applyRuntimeConfig(enabled, serviceAccount, checkIntervalTicks);
+        arbitrageService.applyRuntimeConfig(enabled, serviceAccount, checkIntervalTicks);
 
-        plugin.getConfig().set("arbitrage.enabled", arbitrageService.isEnabled());
-        plugin.getConfig().set("arbitrage.service_account", arbitrageService.getServiceAccount());
+        try {
+            plugin.getConfig().set("arbitrage.enabled", arbitrageService.isEnabled());
+            plugin.getConfig().set("arbitrage.service_account", arbitrageService.getServiceAccount());
             plugin.getConfig().set("arbitrage.check_interval_ticks", arbitrageService.getCheckIntervalTicks());
-        plugin.saveConfig();
+            if (minGrossSpreadPct != null) {
+                plugin.getConfig().set("arbitrage.min_gross_spread_pct", minGrossSpreadPct.toPlainString());
+            }
+            if (minNetProfitPct != null) {
+                plugin.getConfig().set("arbitrage.min_net_profit_pct", minNetProfitPct.toPlainString());
+            }
+            if (slipPriceChangeThresholdPct != null) {
+                plugin.getConfig().set("arbitrage.slip_detection.price_change_threshold_pct", slipPriceChangeThresholdPct.toPlainString());
+            }
+            if (slipVolumeDropThresholdPct != null) {
+                plugin.getConfig().set("arbitrage.slip_detection.volume_drop_threshold_pct", slipVolumeDropThresholdPct.toPlainString());
+            }
+            if (slipCheckLookbackTicks != null) {
+                plugin.getConfig().set("arbitrage.slip_detection.check_lookback_ticks", slipCheckLookbackTicks);
+            }
+            plugin.saveConfig();
+            plugin.reloadPluginConfig();
+        } catch (IllegalArgumentException e) {
+            ctx.status(400).json(Map.of("error", "invalid_arbitrage_settings", "message", e.getMessage()));
+            return;
+        } catch (Exception e) {
+            plugin.getLogger().warning("arbitrage settings の更新に失敗しました: " + e.getMessage());
+            ctx.status(500).json(Map.of("error", "arbitrage_settings_update_failed"));
+            return;
+        }
+
+        var cfg = plugin.getPluginConfig();
 
         ctx.status(200).json(Map.of(
                 "enabled", arbitrageService.isEnabled(),
                 "current_service_account", arbitrageService.getServiceAccount(),
                 "current_check_interval_ticks", arbitrageService.getCheckIntervalTicks(),
+                "current_min_gross_spread_pct", cfg.getArbitrageMinGrossSpreadPct().toPlainString(),
+                "current_min_net_profit_pct", cfg.getArbitrageMinNetProfitPct().toPlainString(),
+                "current_slip_price_change_threshold_pct", cfg.getArbitrageSlipPriceChangeThresholdPct().toPlainString(),
+                "current_slip_volume_drop_threshold_pct", cfg.getArbitrageSlipVolumeDropThresholdPct().toPlainString(),
+                "current_slip_check_lookback_ticks", cfg.getArbitrageSlipLookbackTicks(),
                 "timestamp", java.time.Instant.now().toString()
         ));
     }
 
     private void handleArbitrageStatus(Context ctx) {
         if (!requireAdminAuth(ctx)) return;
-        ctx.status(200).json(arbitrageService.getStatusSnapshot());
+        Map<String, Object> status = new LinkedHashMap<>(arbitrageService.getStatusSnapshot());
+        var cfg = plugin.getPluginConfig();
+        status.put("min_gross_spread_pct", cfg.getArbitrageMinGrossSpreadPct().toPlainString());
+        status.put("min_net_profit_pct", cfg.getArbitrageMinNetProfitPct().toPlainString());
+        status.put("slip_price_change_threshold_pct", cfg.getArbitrageSlipPriceChangeThresholdPct().toPlainString());
+        status.put("slip_volume_drop_threshold_pct", cfg.getArbitrageSlipVolumeDropThresholdPct().toPlainString());
+        status.put("slip_check_lookback_ticks", cfg.getArbitrageSlipLookbackTicks());
+        ctx.status(200).json(status);
+    }
+
+    private static BigDecimal parseStrictBigDecimal(Object value) {
+        if (value == null) return null;
+        try {
+            return new BigDecimal(value.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }

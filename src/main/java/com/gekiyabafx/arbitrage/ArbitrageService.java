@@ -36,6 +36,7 @@ public final class ArbitrageService {
     private volatile LastExecution lastExecution;
 
     private final Deque<SkipRecord> recentSkips = new ArrayDeque<>();
+    private final Deque<ExecutionRecord> recentExecutions = new ArrayDeque<>();
     private final Map<String, Boolean> slipFlags = new ConcurrentHashMap<>();
     private final Map<String, Deque<MarketSnapshot>> snapshots = new ConcurrentHashMap<>();
 
@@ -145,6 +146,22 @@ public final class ArbitrageService {
             }
         }
         m.put("recent_skips", skips);
+
+        List<Map<String, Object>> executions = new ArrayList<>();
+        synchronized (recentExecutions) {
+            for (ExecutionRecord r : recentExecutions) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("pair", r.pairId());
+                row.put("status", r.status());
+                row.put("timestamp", Instant.ofEpochSecond(r.timestamp()).toString());
+                row.put("order_ids", r.orderIds());
+                row.put("quantity", r.quantity());
+                row.put("spread_pct", r.spreadPct());
+                row.put("net_profit_pct", r.netProfitPct());
+                executions.add(row);
+            }
+        }
+        m.put("recent_executions", executions);
         return m;
     }
 
@@ -434,6 +451,8 @@ public final class ArbitrageService {
                 sm.markDirty();
                 lastExecution = new LastExecution(pairId, Instant.now().getEpochSecond(), "executed",
                         List.of(buy.getOrderId(), sell.getOrderId()));
+                addExecution(pairId, "executed", List.of(buy.getOrderId(), sell.getOrderId()),
+                    tradeQty, grossSpreadPct, netPct);
 
                 arbLogger.info("EXECUTED", pairId, null, Map.of(
                         "buy_order_id", buy.getOrderId(),
@@ -456,6 +475,28 @@ public final class ArbitrageService {
             recentSkips.addFirst(new SkipRecord(pairId, reason, Instant.now().getEpochSecond()));
             while (recentSkips.size() > 20) {
                 recentSkips.removeLast();
+            }
+        }
+    }
+
+    private void addExecution(String pairId,
+                              String status,
+                              List<String> orderIds,
+                              BigDecimal quantity,
+                              BigDecimal spreadPct,
+                              BigDecimal netProfitPct) {
+        synchronized (recentExecutions) {
+            recentExecutions.addFirst(new ExecutionRecord(
+                    pairId,
+                    Instant.now().getEpochSecond(),
+                    status,
+                    orderIds,
+                    quantity.setScale(4, RoundingMode.HALF_UP).toPlainString(),
+                    spreadPct.setScale(4, RoundingMode.HALF_UP).toPlainString(),
+                    netProfitPct.setScale(4, RoundingMode.HALF_UP).toPlainString()
+            ));
+            while (recentExecutions.size() > 20) {
+                recentExecutions.removeLast();
             }
         }
     }
@@ -501,5 +542,12 @@ public final class ArbitrageService {
 
     private record MarketSnapshot(long timestamp, BigDecimal price, BigDecimal askVolume) {}
     private record SkipRecord(String pairId, String reason, long timestamp) {}
+    private record ExecutionRecord(String pairId,
+                                   long timestamp,
+                                   String status,
+                                   List<String> orderIds,
+                                   String quantity,
+                                   String spreadPct,
+                                   String netProfitPct) {}
     private record LastExecution(String pairId, long timestamp, String status, List<String> orderIds) {}
 }

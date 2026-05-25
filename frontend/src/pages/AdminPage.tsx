@@ -493,6 +493,11 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
   const [accounts, setAccounts] = useState<ServiceAccount[]>([])
   const [selectedAccount, setSelectedAccount] = useState('svc:arbitrage')
   const [intervalSeconds, setIntervalSeconds] = useState('15')
+  const [minGrossSpreadPct, setMinGrossSpreadPct] = useState('0.5')
+  const [minNetProfitPct, setMinNetProfitPct] = useState('0.30')
+  const [slipPriceChangeThresholdPct, setSlipPriceChangeThresholdPct] = useState('3.0')
+  const [slipVolumeDropThresholdPct, setSlipVolumeDropThresholdPct] = useState('35')
+  const [slipLookbackSeconds, setSlipLookbackSeconds] = useState('3')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
@@ -501,6 +506,11 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
   const syncLocalControls = useCallback((nextStatus: ArbitrageStatusResponse) => {
     setSelectedAccount(nextStatus.service_account)
     setIntervalSeconds(String(Math.max(1, Math.round(nextStatus.check_interval_ticks / 20))))
+    setMinGrossSpreadPct(nextStatus.min_gross_spread_pct)
+    setMinNetProfitPct(nextStatus.min_net_profit_pct)
+    setSlipPriceChangeThresholdPct(nextStatus.slip_price_change_threshold_pct)
+    setSlipVolumeDropThresholdPct(nextStatus.slip_volume_drop_threshold_pct)
+    setSlipLookbackSeconds(String(Math.max(1, Math.round(nextStatus.slip_check_lookback_ticks / 20))))
   }, [])
 
   const load = useCallback(async () => {
@@ -542,9 +552,44 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
       return
     }
 
+    const grossThreshold = Number(minGrossSpreadPct)
+    if (!Number.isFinite(grossThreshold) || grossThreshold < 0) {
+      setMsg({ text: '最小総スプレッド(%)は0以上の数値で入力してください', ok: false })
+      return
+    }
+
+    const netThreshold = Number(minNetProfitPct)
+    if (!Number.isFinite(netThreshold) || netThreshold < 0) {
+      setMsg({ text: '最小純利益(%)は0以上の数値で入力してください', ok: false })
+      return
+    }
+
+    const priceThreshold = Number(slipPriceChangeThresholdPct)
+    if (!Number.isFinite(priceThreshold) || priceThreshold < 0) {
+      setMsg({ text: '価格変化しきい値(%)は0以上の数値で入力してください', ok: false })
+      return
+    }
+
+    const volumeThreshold = Number(slipVolumeDropThresholdPct)
+    if (!Number.isFinite(volumeThreshold) || volumeThreshold < 0) {
+      setMsg({ text: '出来高減少しきい値(%)は0以上の数値で入力してください', ok: false })
+      return
+    }
+
+    const lookbackSec = Number(slipLookbackSeconds)
+    if (!Number.isFinite(lookbackSec) || !Number.isInteger(lookbackSec) || lookbackSec < 1) {
+      setMsg({ text: 'スリッページ判定期間は1以上の整数秒で入力してください', ok: false })
+      return
+    }
+
     const request = {
       ...payload,
       check_interval_ticks: seconds * 20,
+      min_gross_spread_pct: String(grossThreshold),
+      min_net_profit_pct: String(netThreshold),
+      slip_price_change_threshold_pct: String(priceThreshold),
+      slip_volume_drop_threshold_pct: String(volumeThreshold),
+      slip_check_lookback_ticks: lookbackSec * 20,
     }
 
     if (isDebug) {
@@ -553,11 +598,16 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
         enabled: request.enabled ?? status.enabled,
         service_account: request.service_account ?? status.service_account,
         check_interval_ticks: request.check_interval_ticks,
+        min_gross_spread_pct: request.min_gross_spread_pct,
+        min_net_profit_pct: request.min_net_profit_pct,
+        slip_price_change_threshold_pct: request.slip_price_change_threshold_pct,
+        slip_volume_drop_threshold_pct: request.slip_volume_drop_threshold_pct,
+        slip_check_lookback_ticks: request.slip_check_lookback_ticks,
       }
       setStatus(next)
       syncLocalControls(next)
       setMsg({
-        text: `[DEBUG] 更新: enabled=${next.enabled} service=${next.service_account} interval=${Math.round(next.check_interval_ticks / 20)}秒`,
+        text: `[DEBUG] 更新: enabled=${next.enabled} service=${next.service_account} interval=${Math.round(next.check_interval_ticks / 20)}秒 spread/net=${next.min_gross_spread_pct}%/${next.min_net_profit_pct}% slip=${next.slip_price_change_threshold_pct}%/${next.slip_volume_drop_threshold_pct}%/${Math.round(next.slip_check_lookback_ticks / 20)}秒`,
         ok: true,
       })
       return
@@ -568,7 +618,7 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
     try {
       const updated = await adminToggleArbitrage(request)
       setMsg({
-        text: `更新しました（enabled=${updated.enabled}, interval=${Math.round(updated.current_check_interval_ticks / 20)}秒）`,
+        text: `更新しました（enabled=${updated.enabled}, interval=${Math.round(updated.current_check_interval_ticks / 20)}秒, spread/net=${updated.current_min_gross_spread_pct}%/${updated.current_min_net_profit_pct}%, slip=${updated.current_slip_price_change_threshold_pct}%/${updated.current_slip_volume_drop_threshold_pct}%/${Math.round(updated.current_slip_check_lookback_ticks / 20)}秒）`,
         ok: true,
       })
       await load()
@@ -597,6 +647,8 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
         </span>
         <span className="arb-meta">監視ペア: {status.pairs_under_watch.join(', ') || 'なし'}</span>
         <span className="arb-meta">監視間隔: {Math.max(1, Math.round(status.check_interval_ticks / 20))}秒</span>
+        <span className="arb-meta">最小閾値: spread {status.min_gross_spread_pct}% / net {status.min_net_profit_pct}%</span>
+        <span className="arb-meta">スリップ閾値: {status.slip_price_change_threshold_pct}% / {status.slip_volume_drop_threshold_pct}% / {Math.max(1, Math.round(status.slip_check_lookback_ticks / 20))}秒</span>
         <span className="arb-meta">最終チェック: {status.last_check ?? '未実行'}</span>
       </div>
 
@@ -626,6 +678,66 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
           />
         </label>
 
+        <label>最小総スプレッド（%）
+          <input
+            className="admin-input"
+            type="number"
+            min="0"
+            step="0.01"
+            value={minGrossSpreadPct}
+            onChange={(e) => setMinGrossSpreadPct(e.target.value)}
+            disabled={saving}
+          />
+        </label>
+
+        <label>最小純利益（%）
+          <input
+            className="admin-input"
+            type="number"
+            min="0"
+            step="0.01"
+            value={minNetProfitPct}
+            onChange={(e) => setMinNetProfitPct(e.target.value)}
+            disabled={saving}
+          />
+        </label>
+
+        <label>価格変化しきい値（%）
+          <input
+            className="admin-input"
+            type="number"
+            min="0"
+            step="0.01"
+            value={slipPriceChangeThresholdPct}
+            onChange={(e) => setSlipPriceChangeThresholdPct(e.target.value)}
+            disabled={saving}
+          />
+        </label>
+
+        <label>出来高減少しきい値（%）
+          <input
+            className="admin-input"
+            type="number"
+            min="0"
+            step="0.01"
+            value={slipVolumeDropThresholdPct}
+            onChange={(e) => setSlipVolumeDropThresholdPct(e.target.value)}
+            disabled={saving}
+          />
+        </label>
+
+        <label>スリッページ判定期間（秒）
+          <input
+            className="admin-input"
+            type="number"
+            min="1"
+            step="1"
+            value={slipLookbackSeconds}
+            onChange={(e) => setSlipLookbackSeconds(e.target.value)}
+            disabled={saving}
+          />
+        </label>
+
         <div className="arb-actions">
           <button
             className="admin-save-btn"
@@ -651,20 +763,38 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
         </div>
       </div>
 
-      <div className="arb-recent-skips">
-        <h4 className="admin-section-title">直近スキップ理由</h4>
-        {status.recent_skips.length === 0 ? (
-          <p className="admin-loading">スキップ履歴なし</p>
-        ) : (
-          <ul className="pending-list">
-            {status.recent_skips.map((s, idx) => (
-              <li key={`${s.timestamp}-${idx}`} className="pending-with">
-                <span>{s.pair} / {s.reason}</span>
-                <span>{s.timestamp}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+      <div className="arb-history-grid">
+        <div className="arb-recent-skips">
+          <h4 className="admin-section-title">直近スキップ理由</h4>
+          {status.recent_skips.length === 0 ? (
+            <p className="admin-loading">スキップ履歴なし</p>
+          ) : (
+            <ul className="pending-list">
+              {status.recent_skips.map((s, idx) => (
+                <li key={`${s.timestamp}-${idx}`} className="pending-with">
+                  <span>{s.pair} / {s.reason}</span>
+                  <span>{s.timestamp}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="arb-recent-results">
+          <h4 className="admin-section-title">直近裁定取引結果</h4>
+          {status.recent_executions.length === 0 ? (
+            <p className="admin-loading">約定履歴なし</p>
+          ) : (
+            <ul className="pending-list">
+              {status.recent_executions.map((r, idx) => (
+                <li key={`${r.timestamp}-${r.order_ids.join('-')}-${idx}`} className="pending-dep">
+                  <span>{r.pair} / {r.status} / qty {r.quantity}</span>
+                  <span>{r.timestamp}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       {msg && <p className={`admin-msg ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</p>}
