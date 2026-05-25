@@ -62,10 +62,13 @@ public final class WebServer {
                         rule.anyHost();
                     } else {
                         // 本番時: 設定されたオリジンのみ許可する
-                        rule.allowHost(
-                            "http://"  + cfg.getServerIp() + ":" + bindPort,
-                            "https://" + cfg.getServerIp() + ":" + bindPort
-                        );
+                        String host = cfg.getServerIp();
+                        String scheme = cfg.getLoginUrlScheme();
+                        String origin = scheme + "://" + host;
+                        if (cfg.isLoginUrlIncludePort()) {
+                            origin += ":" + bindPort;
+                        }
+                        rule.allowHost(origin);
                     }
                 })
             );

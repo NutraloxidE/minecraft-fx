@@ -17,6 +17,14 @@ web-bind-ip: "0.0.0.0"
 # ファイアウォールでこのポートを開放すること。
 web-port: 3010
 
+# /fx login, /fx admin で表示するURLのスキーム。
+# 有効値: http / https
+login-url-scheme: "http"
+
+# /fx login, /fx admin で表示するURLに :web-port を含めるか。
+# リバースプロキシ配下で 443/80 の既定ポート運用時は false 推奨。
+login-url-include-port: true
+
 # 開発モード。true にすると CORS で anyHost() を有効化する。
 # 本番環境では必ず false にすること。
 dev-mode: false

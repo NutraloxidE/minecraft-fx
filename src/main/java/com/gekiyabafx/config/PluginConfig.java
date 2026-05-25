@@ -29,6 +29,12 @@ public final class PluginConfig {
     /** 内蔵WebサーバーがリッスンするTCPポート番号。デフォルト: {@code 3010} */
     private final int webPort;
 
+    /** ログインURLのスキーム。{@code "http"} または {@code "https"}。 */
+    private final String loginUrlScheme;
+
+    /** ログインURLに :web-port を含めるか。 */
+    private final boolean loginUrlIncludePort;
+
     /**
      * 開発モードフラグ。{@code true} の場合、Javalin の CORS を {@code anyHost()} で開放する。
      * 本番環境では {@code false} にすること。デフォルト: {@code false}
@@ -128,6 +134,8 @@ public final class PluginConfig {
             String serverIp,
             String webBindIp,
             int webPort,
+            String loginUrlScheme,
+            boolean loginUrlIncludePort,
             boolean devMode,
             long otpExpireSeconds,
             long sessionExpireSeconds,
@@ -160,6 +168,8 @@ public final class PluginConfig {
         this.serverIp              = serverIp;
         this.webBindIp             = webBindIp;
         this.webPort                = webPort;
+        this.loginUrlScheme         = loginUrlScheme;
+        this.loginUrlIncludePort    = loginUrlIncludePort;
         this.devMode                = devMode;
         this.otpExpireSeconds       = otpExpireSeconds;
         this.sessionExpireSeconds   = sessionExpireSeconds;
@@ -205,7 +215,7 @@ public final class PluginConfig {
             int executionsMaxPerPair,
             int orderHistoryMaxPerPair
     ) {
-        return new PluginConfig(serverIp, "0.0.0.0", webPort, devMode,
+        return new PluginConfig(serverIp, "0.0.0.0", webPort, "http", true, devMode,
                 otpExpireSeconds, sessionExpireSeconds,
                 executionsMaxPerPair, orderHistoryMaxPerPair,
                 new BigDecimal("0.0010"), new BigDecimal("0.0012"),
@@ -250,6 +260,18 @@ public final class PluginConfig {
             throw new IllegalArgumentException(
                     "config.yml: web-port の値が不正です（有効範囲: 1–65535）: " + webPort);
         }
+
+        String loginUrlScheme = cfg.getString("login-url-scheme", "http");
+        if (loginUrlScheme == null) {
+            loginUrlScheme = "http";
+        }
+        loginUrlScheme = loginUrlScheme.trim().toLowerCase();
+        if (!"http".equals(loginUrlScheme) && !"https".equals(loginUrlScheme)) {
+            throw new IllegalArgumentException(
+                    "config.yml: login-url-scheme は http または https を指定してください: " + loginUrlScheme);
+        }
+
+        boolean loginUrlIncludePort = cfg.getBoolean("login-url-include-port", true);
 
         boolean devMode = cfg.getBoolean("dev-mode", false);
 
@@ -445,6 +467,8 @@ public final class PluginConfig {
                 serverIp,
             webBindIp,
                 webPort,
+                loginUrlScheme,
+                loginUrlIncludePort,
                 devMode,
                 otpExpireSeconds,
                 sessionExpireSeconds,
@@ -491,6 +515,36 @@ public final class PluginConfig {
     /** @return 内蔵WebサーバーのTCPポート番号 */
     public int getWebPort() {
         return webPort;
+    }
+
+    /** @return ログインURLのスキーム（http/https） */
+    public String getLoginUrlScheme() {
+        return loginUrlScheme;
+    }
+
+    /** @return ログインURLに :web-port を含めるか */
+    public boolean isLoginUrlIncludePort() {
+        return loginUrlIncludePort;
+    }
+
+    /**
+     * 公開向けログインURLのベース設定（scheme/server-ip/port有無）を使ってURLを構築する。
+     *
+     * @param pathAndQuery 先頭 `/` 付きのパス（クエリ含む）。`/trade?otp=...` の形式を想定。
+     * @return 組み立て済みの絶対URL
+     */
+    public String buildPublicWebUrl(String pathAndQuery) {
+        String normalizedPath = (pathAndQuery != null && pathAndQuery.startsWith("/"))
+                ? pathAndQuery
+                : "/" + (pathAndQuery == null ? "" : pathAndQuery);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(loginUrlScheme).append("://").append(serverIp);
+        if (loginUrlIncludePort) {
+            sb.append(":").append(webPort);
+        }
+        sb.append(normalizedPath);
+        return sb.toString();
     }
 
     /** @return 開発モードが有効かどうか */

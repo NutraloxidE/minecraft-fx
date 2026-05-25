@@ -338,22 +338,36 @@ function BackupDownloadPanel({ isDebug }: { isDebug: boolean }) {
 function LoginLinkSettingsPanel({ isDebug }: { isDebug: boolean }) {
   const [settings, setSettings] = useState<AdminWebSettingsResponse | null>(null)
   const [serverIpInput, setServerIpInput] = useState('')
+  const [urlSchemeInput, setUrlSchemeInput] = useState<'http' | 'https'>('http')
+  const [includePortInput, setIncludePortInput] = useState(true)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
+
+  const formatBaseUrl = (s: AdminWebSettingsResponse) =>
+    `${s.login_url_scheme}://${s.server_ip}${s.login_url_include_port ? `:${s.web_port}` : ''}`
 
   const load = useCallback(async () => {
     setLoading(true)
     setMsg(null)
     try {
       if (isDebug) {
-        const debugSettings: AdminWebSettingsResponse = { server_ip: '127.0.0.1', web_port: 3010 }
+        const debugSettings: AdminWebSettingsResponse = {
+          server_ip: '127.0.0.1',
+          web_port: 3010,
+          login_url_scheme: 'http',
+          login_url_include_port: true,
+        }
         setSettings(debugSettings)
         setServerIpInput(debugSettings.server_ip)
+        setUrlSchemeInput(debugSettings.login_url_scheme)
+        setIncludePortInput(debugSettings.login_url_include_port)
       } else {
         const res = await adminFetchWebSettings()
         setSettings(res)
         setServerIpInput(res.server_ip)
+        setUrlSchemeInput(res.login_url_scheme)
+        setIncludePortInput(res.login_url_include_port)
       }
     } catch (e: unknown) {
       const err = e as { message?: string }
@@ -374,18 +388,31 @@ function LoginLinkSettingsPanel({ isDebug }: { isDebug: boolean }) {
     }
 
     if (isDebug) {
-      setSettings((prev) => ({ server_ip: serverIpInput.trim(), web_port: prev?.web_port ?? 3010 }))
-      setMsg({ text: `[DEBUG] server-ip を ${serverIpInput.trim()} に更新したことにします`, ok: true })
+      setSettings((prev) => ({
+        server_ip: serverIpInput.trim(),
+        web_port: prev?.web_port ?? 3010,
+        login_url_scheme: urlSchemeInput,
+        login_url_include_port: includePortInput,
+      }))
+      const debugPort = settings?.web_port ?? 3010
+      const debugBase = `${urlSchemeInput}://${serverIpInput.trim()}${includePortInput ? `:${debugPort}` : ''}`
+      setMsg({ text: `[DEBUG] ログインURL設定を更新したことにします: ${debugBase}`, ok: true })
       return
     }
 
     setSaving(true)
     setMsg(null)
     try {
-      const updated = await adminPatchWebSettings(serverIpInput.trim())
+      const updated = await adminPatchWebSettings({
+        serverIp: serverIpInput.trim(),
+        loginUrlScheme: urlSchemeInput,
+        loginUrlIncludePort: includePortInput,
+      })
       setSettings(updated)
       setServerIpInput(updated.server_ip)
-      setMsg({ text: `保存しました。以後のログインURLは ${updated.server_ip}:${updated.web_port} を使います`, ok: true })
+      setUrlSchemeInput(updated.login_url_scheme)
+      setIncludePortInput(updated.login_url_include_port)
+      setMsg({ text: `保存しました。以後のログインURLは ${formatBaseUrl(updated)} を使います`, ok: true })
     } catch (e: unknown) {
       const err = e as { message?: string }
       setMsg({ text: err.message ?? 'server-ip の更新に失敗しました', ok: false })
@@ -398,12 +425,23 @@ function LoginLinkSettingsPanel({ isDebug }: { isDebug: boolean }) {
     <div className="admin-backup-panel">
       <h3 className="admin-section-title">ログインリンク設定</h3>
       <p className="admin-backup-desc">
-        /fx login と /fx admin で表示するURLのホスト名（グローバルIPまたはドメイン）を設定します。
+        /fx login と /fx admin で表示するURLのプロトコル（http/https）、ホスト名、ポート表示有無を設定します。
       </p>
       {loading ? (
         <p className="admin-loading">読み込み中...</p>
       ) : (
         <div className="admin-form-row">
+          <label>URL Scheme
+            <select
+              className="admin-input"
+              value={urlSchemeInput}
+              onChange={(e) => setUrlSchemeInput(e.target.value === 'https' ? 'https' : 'http')}
+              disabled={saving}
+            >
+              <option value="http">http</option>
+              <option value="https">https</option>
+            </select>
+          </label>
           <label>server-ip
             <input
               className="admin-input"
@@ -412,6 +450,15 @@ function LoginLinkSettingsPanel({ isDebug }: { isDebug: boolean }) {
               placeholder="例: 203.0.113.10 または fx.example.com"
               disabled={saving}
             />
+          </label>
+          <label className="admin-check-label">
+            <input
+              type="checkbox"
+              checked={includePortInput}
+              onChange={(e) => setIncludePortInput(e.target.checked)}
+              disabled={saving}
+            />
+            URLにポートを含める
           </label>
           <label>web-port
             <input
@@ -428,6 +475,11 @@ function LoginLinkSettingsPanel({ isDebug }: { isDebug: boolean }) {
             再読込
           </button>
         </div>
+      )}
+      {!loading && settings && (
+        <p className="admin-backup-desc">
+          現在のログインURLベース: {formatBaseUrl(settings)}
+        </p>
       )}
       {msg && <p className={`admin-msg ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</p>}
     </div>

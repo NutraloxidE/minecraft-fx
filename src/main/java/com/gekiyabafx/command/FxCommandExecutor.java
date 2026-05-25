@@ -149,9 +149,7 @@ public final class FxCommandExecutor implements CommandExecutor {
         long expireMinutes = plugin.getPluginConfig().getOtpExpireSeconds() / 60;
 
         // ─── ログイン URL の構築 ────────────────────────────────────────────────
-        String serverIp = plugin.getPluginConfig().getServerIp();
-        int webPort     = plugin.getPluginConfig().getWebPort();
-        String loginUrl = "http://" + serverIp + ":" + webPort + "/trade?otp=" + entry.getOtp();
+        String loginUrl = plugin.getPluginConfig().buildPublicWebUrl("/trade?otp=" + entry.getOtp());
 
         // ─── チャットメッセージ送信（ClickEvent 付き） ─────────────────────────
         player.sendMessage(
@@ -313,9 +311,7 @@ public final class FxCommandExecutor implements CommandExecutor {
         OtpManager.OtpEntry entry = playerOtpManager.generate(svcId);
         long expireMinutes = plugin.getPluginConfig().getOtpExpireSeconds() / 60;
 
-        String serverIp = plugin.getPluginConfig().getServerIp();
-        int webPort     = plugin.getPluginConfig().getWebPort();
-        String loginUrl = "http://" + serverIp + ":" + webPort + "/trade?otp=" + entry.getOtp();
+        String loginUrl = plugin.getPluginConfig().buildPublicWebUrl("/trade?otp=" + entry.getOtp());
 
         // チャットメッセージ送信
         sender.sendMessage(
@@ -376,9 +372,7 @@ public final class FxCommandExecutor implements CommandExecutor {
         OtpManager.OtpEntry entry = adminOtpManager.generate("admin");
         long expireMinutes = plugin.getPluginConfig().getOtpExpireSeconds() / 60;
 
-        String serverIp = plugin.getPluginConfig().getServerIp();
-        int webPort     = plugin.getPluginConfig().getWebPort();
-        String adminUrl = "http://" + serverIp + ":" + webPort + "/admin?otp=" + entry.getOtp();
+        String adminUrl = plugin.getPluginConfig().buildPublicWebUrl("/admin?otp=" + entry.getOtp());
 
         // チャットメッセージ送信（プレイヤーの場合はClickEvent付き、コンソールはテキストのみ）
         sender.sendMessage(

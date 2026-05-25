@@ -243,11 +243,9 @@ public final class AtmSignListener implements Listener {
 
         atmSessionManager.registerPendingOtp(otp, identity, atmId, clicked.getLocation(), grade);
 
-        String serverIp = plugin.getPluginConfig().getServerIp();
-        int webPort = plugin.getPluginConfig().getWebPort();
         long expireMinutes = plugin.getPluginConfig().getOtpExpireSeconds() / 60;
 
-        String tradeUrl = "http://" + serverIp + ":" + webPort + "/trade?otp=" + otp;
+        String tradeUrl = plugin.getPluginConfig().buildPublicWebUrl("/trade?otp=" + otp);
 
         player.sendMessage("§a[FX] ATM session started. Grade: " + grade.toUpperCase(Locale.ROOT));
         player.sendMessage("§7Move within 3 blocks to keep using ATM features.");

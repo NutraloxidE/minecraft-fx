@@ -538,7 +538,9 @@ public final class AdminApiRouter {
         if (!requireAdminAuth(ctx)) return;
         ctx.status(200).json(Map.of(
                 "server_ip", plugin.getPluginConfig().getServerIp(),
-                "web_port", plugin.getPluginConfig().getWebPort()
+                "web_port", plugin.getPluginConfig().getWebPort(),
+                "login_url_scheme", plugin.getPluginConfig().getLoginUrlScheme(),
+                "login_url_include_port", plugin.getPluginConfig().isLoginUrlIncludePort()
         ));
     }
 
@@ -548,27 +550,65 @@ public final class AdminApiRouter {
         Map<String, Object> body = parseBody(ctx);
         if (body == null) return;
 
-        String serverIp = getString(body, "server_ip");
-        if (serverIp == null || serverIp.isBlank()) {
-            ctx.status(400).json(Map.of("error", "invalid_server_ip"));
-            return;
+        String normalizedServerIp = plugin.getPluginConfig().getServerIp();
+        String normalizedScheme = plugin.getPluginConfig().getLoginUrlScheme();
+        boolean includePort = plugin.getPluginConfig().isLoginUrlIncludePort();
+
+        if (body.containsKey("server_ip")) {
+            String serverIp = getString(body, "server_ip");
+            if (serverIp == null || serverIp.isBlank()) {
+                ctx.status(400).json(Map.of("error", "invalid_server_ip"));
+                return;
+            }
+
+            normalizedServerIp = serverIp.trim();
+            if (normalizedServerIp.length() > 255 || normalizedServerIp.contains(" ")) {
+                ctx.status(400).json(Map.of("error", "invalid_server_ip"));
+                return;
+            }
         }
 
-        String normalized = serverIp.trim();
-        if (normalized.length() > 255 || normalized.contains(" ")) {
-            ctx.status(400).json(Map.of("error", "invalid_server_ip"));
-            return;
+        if (body.containsKey("login_url_scheme")) {
+            String scheme = getString(body, "login_url_scheme");
+            if (scheme == null) {
+                ctx.status(400).json(Map.of("error", "invalid_login_url_scheme"));
+                return;
+            }
+
+            normalizedScheme = scheme.trim().toLowerCase(Locale.ROOT);
+            if (!"http".equals(normalizedScheme) && !"https".equals(normalizedScheme)) {
+                ctx.status(400).json(Map.of("error", "invalid_login_url_scheme"));
+                return;
+            }
+        }
+
+        if (body.containsKey("login_url_include_port")) {
+            Object includePortRaw = body.get("login_url_include_port");
+            if (includePortRaw instanceof Boolean b) {
+                includePort = b;
+            } else if (includePortRaw instanceof String s) {
+                if (!"true".equalsIgnoreCase(s) && !"false".equalsIgnoreCase(s)) {
+                    ctx.status(400).json(Map.of("error", "invalid_login_url_include_port"));
+                    return;
+                }
+                includePort = Boolean.parseBoolean(s);
+            } else {
+                ctx.status(400).json(Map.of("error", "invalid_login_url_include_port"));
+                return;
+            }
         }
 
         try {
-            plugin.getConfig().set("server-ip", normalized);
+            plugin.getConfig().set("server-ip", normalizedServerIp);
+            plugin.getConfig().set("login-url-scheme", normalizedScheme);
+            plugin.getConfig().set("login-url-include-port", includePort);
             plugin.saveConfig();
             plugin.reloadPluginConfig();
         } catch (IllegalArgumentException e) {
-            ctx.status(400).json(Map.of("error", "invalid_server_ip", "message", e.getMessage()));
+            ctx.status(400).json(Map.of("error", "invalid_web_settings", "message", e.getMessage()));
             return;
         } catch (Exception e) {
-            plugin.getLogger().warning("server-ip の更新に失敗しました: " + e.getMessage());
+            plugin.getLogger().warning("web-settings の更新に失敗しました: " + e.getMessage());
             ctx.status(500).json(Map.of("error", "web_settings_update_failed"));
             return;
         }
@@ -576,6 +616,8 @@ public final class AdminApiRouter {
         ctx.status(200).json(Map.of(
                 "server_ip", plugin.getPluginConfig().getServerIp(),
                 "web_port", plugin.getPluginConfig().getWebPort(),
+                "login_url_scheme", plugin.getPluginConfig().getLoginUrlScheme(),
+                "login_url_include_port", plugin.getPluginConfig().isLoginUrlIncludePort(),
                 "updated", true
         ));
     }

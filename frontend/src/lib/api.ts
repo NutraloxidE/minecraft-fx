@@ -247,6 +247,8 @@ export const adminDeletePair = (id: string): Promise<{ id: string; deleted: bool
 export interface AdminWebSettingsResponse {
   server_ip: string
   web_port: number
+  login_url_scheme: 'http' | 'https'
+  login_url_include_port: boolean
 }
 
 export interface AdminPatchWebSettingsResponse extends AdminWebSettingsResponse {
@@ -257,9 +259,19 @@ export interface AdminPatchWebSettingsResponse extends AdminWebSettingsResponse 
 export const adminFetchWebSettings = (): Promise<AdminWebSettingsResponse> =>
   request('GET', '/api/admin/web-settings', getAdminToken())
 
-/** ログインリンク生成に使う server-ip を更新する */
-export const adminPatchWebSettings = (serverIp: string): Promise<AdminPatchWebSettingsResponse> =>
-  request('PATCH', '/api/admin/web-settings', getAdminToken(), { server_ip: serverIp })
+export interface AdminPatchWebSettingsRequest {
+  serverIp: string
+  loginUrlScheme: 'http' | 'https'
+  loginUrlIncludePort: boolean
+}
+
+/** ログインリンク生成に使うWeb設定を更新する */
+export const adminPatchWebSettings = (req: AdminPatchWebSettingsRequest): Promise<AdminPatchWebSettingsResponse> =>
+  request('PATCH', '/api/admin/web-settings', getAdminToken(), {
+    server_ip: req.serverIp,
+    login_url_scheme: req.loginUrlScheme,
+    login_url_include_port: req.loginUrlIncludePort,
+  })
 
 export interface ArbitrageSkipRecord {
   pair: string
