@@ -8,6 +8,7 @@ import com.gekiyabafx.command.FxCommandExecutor;
 import com.gekiyabafx.config.PluginConfig;
 import com.gekiyabafx.listener.AtmSignListener;
 import com.gekiyabafx.listener.PlayerJoinListener;
+import com.gekiyabafx.marketmaker.ActiveMarketMakerService;
 import com.gekiyabafx.storage.ExecutionRepository;
 import com.gekiyabafx.storage.H2ExecutionRepository;
 import com.gekiyabafx.storage.StorageManager;
@@ -64,6 +65,9 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
     /** 裁定取引監視サービス。 */
     private ArbitrageService arbitrageService;
+
+    /** 市場流動性維持用マーケットメイクサービス。 */
+    private ActiveMarketMakerService activeMarketMakerService;
     // ─────────────────────────────────────────────────────────────────────────
     //  静的アクセサ
     // ─────────────────────────────────────────────────────────────────────────
@@ -160,7 +164,10 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
         arbitrageService = new ArbitrageService(this, executionRepo);
         arbitrageService.start();
 
-        new AdminApiRouter(adminSessionManager, this, arbitrageService).register(webServer.getApp());
+        activeMarketMakerService = new ActiveMarketMakerService(this, executionRepo);
+        activeMarketMakerService.start();
+
+        new AdminApiRouter(adminSessionManager, this, arbitrageService, activeMarketMakerService).register(webServer.getApp());
     }
 
     @Override
@@ -179,6 +186,10 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
 
         if (arbitrageService != null) {
             arbitrageService.stop();
+        }
+
+        if (activeMarketMakerService != null) {
+            activeMarketMakerService.stop();
         }
 
         if (atmSignListener != null) {

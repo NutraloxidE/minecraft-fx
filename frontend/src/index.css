@@ -1285,6 +1285,31 @@ code {
   margin-top: 0.4rem;
 }
 
+.amm-log-panel {
+  margin-top: 0.6rem;
+  width: 100%;
+}
+
+.amm-log-list {
+  width: 100%;
+}
+
+.amm-log-list li.pending-dep {
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.amm-log-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  flex: 1 1 auto;
+}
+
+.amm-log-time {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 @media (max-width: 900px) {
   .arb-history-grid {
     grid-template-columns: 1fr;

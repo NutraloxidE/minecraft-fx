@@ -367,6 +367,39 @@ export interface ArbitrageToggleResponse {
   timestamp: string
 }
 
+export interface MarketMakerStatusResponse {
+  running: boolean
+  service_account: string
+  current_loop_interval_ticks: number
+  tracked_pairs: number
+  passive_pairs: number
+  squeezing_pairs: number
+  matching_pairs: number
+  owned_orders: number
+  recent_logs: MarketMakerLogRecord[]
+  timestamp: string
+}
+
+export interface MarketMakerLogRecord {
+  timestamp: string
+  level: string
+  action: string
+  message: string
+}
+
+export interface MarketMakerToggleRequest {
+  enabled?: boolean
+  loop_interval_ticks?: number
+  service_account?: string
+}
+
+export interface MarketMakerToggleResponse {
+  enabled: boolean
+  service_account: string
+  current_loop_interval_ticks: number
+  timestamp: string
+}
+
 /** 裁定取引の現在状態を取得する */
 export const adminFetchArbitrageStatus = (): Promise<ArbitrageStatusResponse> =>
   request('GET', '/api/admin/arbitrage/status', getAdminToken())
@@ -374,6 +407,14 @@ export const adminFetchArbitrageStatus = (): Promise<ArbitrageStatusResponse> =>
 /** 裁定取引の実行ON/OFF・サービスアカウントを更新する */
 export const adminToggleArbitrage = (req: ArbitrageToggleRequest): Promise<ArbitrageToggleResponse> =>
   request('PATCH', '/api/admin/arbitrage/toggle', getAdminToken(), req)
+
+/** アクティブMMの現在状態を取得する */
+export const adminFetchMarketMakerStatus = (): Promise<MarketMakerStatusResponse> =>
+  request('GET', '/api/admin/market-maker/status', getAdminToken())
+
+/** アクティブMMの実行ON/OFFを切り替える */
+export const adminToggleMarketMaker = (req: MarketMakerToggleRequest): Promise<MarketMakerToggleResponse> =>
+  request('PATCH', '/api/admin/market-maker/toggle', getAdminToken(), req)
 
 export interface AdminBackupDownloadResult {
   blob: Blob

@@ -12,7 +12,7 @@ import type {
   Execution,
   PlayerStateResponse,
 } from '@/types/api'
-import type { ServiceAccount, ArbitrageStatusResponse } from '@/lib/api'
+import type { ServiceAccount, ArbitrageStatusResponse, MarketMakerStatusResponse } from '@/lib/api'
 
 // ─── ペア一覧 ──────────────────────────────────────────────────────────────────
 
@@ -246,4 +246,30 @@ export const DEBUG_ARBITRAGE_STATUS: ArbitrageStatusResponse = {
       net_profit_pct: '0.7000',
     },
   ],
+}
+
+export const DEBUG_MARKET_MAKER_STATUS: MarketMakerStatusResponse = {
+  running: true,
+  service_account: 'svc:gekiyaba_mm',
+  current_loop_interval_ticks: 20,
+  tracked_pairs: 2,
+  passive_pairs: 2,
+  squeezing_pairs: 0,
+  matching_pairs: 0,
+  owned_orders: 4,
+  recent_logs: [
+    {
+      timestamp: new Date(Date.now() - 90_000).toISOString(),
+      level: 'INFO',
+      action: 'START',
+      message: '[ActiveMM] [START] ActiveMM を開始しました',
+    },
+    {
+      timestamp: new Date(Date.now() - 45_000).toISOString(),
+      level: 'INFO',
+      action: 'PASSIVE_REFRESH',
+      message: '[ActiveMM] [DIAMOND/EMERALD] [PASSIVE_REFRESH] {center=4.3200, bid=4.2336, ask=4.4064, qty=1.0000}',
+    },
+  ],
+  timestamp: new Date().toISOString(),
 }

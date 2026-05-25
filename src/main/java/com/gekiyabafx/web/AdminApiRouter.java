@@ -4,6 +4,7 @@ import com.gekiyabafx.GekiyabaFXPlugin;
 import com.gekiyabafx.arbitrage.ArbitrageService;
 import com.gekiyabafx.auth.SessionManager;
 import com.gekiyabafx.model.Pair;
+import com.gekiyabafx.marketmaker.ActiveMarketMakerService;
 import com.gekiyabafx.storage.StorageManager;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -59,6 +60,7 @@ public final class AdminApiRouter {
     private final SessionManager adminSessionManager;
     private final GekiyabaFXPlugin plugin;
     private final ArbitrageService arbitrageService;
+    private final ActiveMarketMakerService activeMarketMakerService;
 
     /**
      * @param adminSessionManager 管理者用 {@link SessionManager}
@@ -67,10 +69,12 @@ public final class AdminApiRouter {
      */
     public AdminApiRouter(SessionManager adminSessionManager,
                           GekiyabaFXPlugin plugin,
-                          ArbitrageService arbitrageService) {
+                          ArbitrageService arbitrageService,
+                          ActiveMarketMakerService activeMarketMakerService) {
         this.adminSessionManager = adminSessionManager;
         this.plugin = plugin;
         this.arbitrageService = arbitrageService;
+        this.activeMarketMakerService = activeMarketMakerService;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -98,6 +102,8 @@ public final class AdminApiRouter {
         app.get   ("/api/admin/backup/download",    this::handleDownloadServerBackup);
         app.patch ("/api/admin/arbitrage/toggle",   this::handleArbitrageToggle);
         app.get   ("/api/admin/arbitrage/status",   this::handleArbitrageStatus);
+        app.patch ("/api/admin/market-maker/toggle", this::handleMarketMakerToggle);
+        app.get   ("/api/admin/market-maker/status", this::handleMarketMakerStatus);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1207,6 +1213,96 @@ public final class AdminApiRouter {
         status.put("slip_volume_drop_threshold_pct", cfg.getArbitrageSlipVolumeDropThresholdPct().toPlainString());
         status.put("slip_check_lookback_ticks", cfg.getArbitrageSlipLookbackTicks());
         ctx.status(200).json(status);
+    }
+
+    private void handleMarketMakerToggle(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        Map<String, Object> body = parseBody(ctx);
+        if (body == null) return;
+
+        Boolean enabled = null;
+        if (body.containsKey("enabled")) {
+            enabled = getBoolean(body, "enabled", false);
+        }
+
+        Integer loopIntervalTicks = null;
+        if (body.containsKey("loop_interval_ticks")) {
+            loopIntervalTicks = getInt(body, "loop_interval_ticks");
+            if (loopIntervalTicks == null || loopIntervalTicks < 1) {
+                ctx.status(400).json(Map.of("error", "invalid_loop_interval_ticks"));
+                return;
+            }
+        }
+
+        String serviceAccount = getString(body, "service_account");
+        if (serviceAccount != null && !serviceAccount.isBlank()) {
+            if (!serviceAccount.startsWith("svc:")) {
+                ctx.status(400).json(Map.of("error", "invalid_service_account"));
+                return;
+            }
+            String name = serviceAccount.substring(4);
+            if (!plugin.getPluginConfig().getServiceAccounts().contains(name)) {
+                ctx.status(400).json(Map.of("error", "service_account_not_allowed"));
+                return;
+            }
+        }
+
+        if (enabled == null && loopIntervalTicks == null && serviceAccount == null) {
+            ctx.status(400).json(Map.of("error", "missing_enabled"));
+            return;
+        }
+
+        boolean wasRunning = activeMarketMakerService.isRunning();
+        boolean needsRestart = false;
+        if (loopIntervalTicks != null) {
+            try {
+                activeMarketMakerService.setLoopIntervalTicks(loopIntervalTicks);
+                needsRestart = true;
+            } catch (IllegalArgumentException e) {
+                ctx.status(400).json(Map.of("error", "invalid_loop_interval_ticks"));
+                return;
+            }
+        }
+
+        if (serviceAccount != null && !serviceAccount.equals(activeMarketMakerService.getServiceAccountId())) {
+            needsRestart = true;
+        }
+
+        if (wasRunning && (enabled != null || needsRestart || serviceAccount != null)) {
+            activeMarketMakerService.stop();
+        }
+
+        if (serviceAccount != null) {
+            try {
+                activeMarketMakerService.setServiceAccountId(serviceAccount);
+            } catch (IllegalArgumentException e) {
+                ctx.status(400).json(Map.of("error", "invalid_service_account"));
+                return;
+            }
+        }
+
+        if (enabled != null) {
+            if (enabled) {
+                activeMarketMakerService.start();
+            }
+        } else if (needsRestart && wasRunning) {
+            activeMarketMakerService.start();
+        } else if (enabled != null && !enabled) {
+                activeMarketMakerService.stop();
+        }
+
+        ctx.status(200).json(Map.of(
+                "enabled", activeMarketMakerService.isRunning(),
+                "service_account", activeMarketMakerService.getServiceAccountId(),
+                "current_loop_interval_ticks", activeMarketMakerService.getLoopIntervalTicks(),
+                "timestamp", java.time.Instant.now().toString()
+        ));
+    }
+
+    private void handleMarketMakerStatus(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+        ctx.status(200).json(activeMarketMakerService.getStatusSnapshot());
     }
 
     private static BigDecimal parseStrictBigDecimal(Object value) {

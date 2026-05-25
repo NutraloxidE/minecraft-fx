@@ -1,6 +1,7 @@
 package com.gekiyabafx.engine;
 
 import com.gekiyabafx.config.PluginConfig;
+import com.gekiyabafx.marketmaker.ActiveMarketMakerService;
 import com.gekiyabafx.model.*;
 
 import java.math.BigDecimal;
@@ -417,13 +418,15 @@ public final class MatchingEngine {
             config,
             base,
             isBuyTaker,
-            buyProfile
+            buyProfile,
+            buy
         );
         BigDecimal sellFeeRate = resolveEffectiveFeeRate(
             config,
             quote,
             !isBuyTaker,
-            sellProfile
+            sellProfile,
+            sell
         );
 
         // ─── 手数料額の計算 ───────────────────────────────────────────────────
@@ -469,8 +472,12 @@ public final class MatchingEngine {
             PluginConfig config,
             String currency,
             boolean isTaker,
-            PluginConfig.AtmFeeProfile profile
+            PluginConfig.AtmFeeProfile profile,
+            Order order
     ) {
+        if (order != null && ActiveMarketMakerService.isMarketMakerAccount(order.getUuid())) {
+            return BigDecimal.ZERO;
+        }
         if (profile != null) {
             return isTaker ? profile.getTakerRate() : profile.getMakerRate();
         }

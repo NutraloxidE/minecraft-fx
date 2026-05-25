@@ -26,15 +26,18 @@ import {
   adminPatchFeeSettings,
   adminFetchArbitrageStatus,
   adminToggleArbitrage,
+  adminFetchMarketMakerStatus,
+  adminToggleMarketMaker,
   adminDownloadServerBackup,
 } from '@/lib/api'
 import {
   DEBUG_ADMIN_PAIRS,
   DEBUG_SERVICE_ACCOUNTS,
   DEBUG_ARBITRAGE_STATUS,
+  DEBUG_MARKET_MAKER_STATUS,
 } from '@/lib/debugData'
 import type { AdminPair, CreatePairRequest } from '@/types/api'
-import type { ServiceAccount, ArbitrageStatusResponse, AdminWebSettingsResponse, AdminFeeSettingsResponse } from '@/lib/api'
+import type { ServiceAccount, ArbitrageStatusResponse, AdminWebSettingsResponse, AdminFeeSettingsResponse, MarketMakerStatusResponse } from '@/lib/api'
 
 // ─── ペア作成フォーム ──────────────────────────────────────────────────────────
 
@@ -1083,6 +1086,225 @@ function ArbitrageControlPanel({ isDebug }: { isDebug: boolean }) {
   )
 }
 
+function MarketMakerControlPanel({ isDebug }: { isDebug: boolean }) {
+  const [status, setStatus] = useState<MarketMakerStatusResponse | null>(null)
+  const [accounts, setAccounts] = useState<ServiceAccount[]>([])
+  const [selectedAccount, setSelectedAccount] = useState('svc:gekiyaba_mm')
+  const [intervalSeconds, setIntervalSeconds] = useState('1')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setErr(null)
+    try {
+      if (isDebug) {
+        setStatus(DEBUG_MARKET_MAKER_STATUS)
+        setAccounts(DEBUG_SERVICE_ACCOUNTS)
+        setSelectedAccount(DEBUG_MARKET_MAKER_STATUS.service_account)
+        setIntervalSeconds(String(Math.max(1, Math.round(DEBUG_MARKET_MAKER_STATUS.current_loop_interval_ticks / 20))))
+        return
+      }
+      const [next, svcAccounts] = await Promise.all([
+        adminFetchMarketMakerStatus(),
+        adminFetchServiceAccounts(),
+      ])
+      setStatus(next)
+      setAccounts(svcAccounts)
+      setSelectedAccount(next.service_account)
+      setIntervalSeconds(String(Math.max(1, Math.round(next.current_loop_interval_ticks / 20))))
+    } catch (e: unknown) {
+      const apiErr = e as { message?: string }
+      setErr(apiErr.message ?? 'アクティブMMステータスの取得に失敗しました')
+    } finally {
+      setLoading(false)
+    }
+  }, [isDebug])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const handleToggle = async (enabled: boolean) => {
+    if (!status) return
+
+    if (isDebug) {
+      const next: MarketMakerStatusResponse = {
+        ...status,
+        running: enabled,
+        timestamp: new Date().toISOString(),
+      }
+      setStatus(next)
+      setMsg({ text: `[DEBUG] アクティブMMを ${enabled ? '開始' : '停止'} したことにします`, ok: true })
+      return
+    }
+
+    setSaving(true)
+    setMsg(null)
+    try {
+      const updated = await adminToggleMarketMaker({ enabled, service_account: selectedAccount })
+      setMsg({ text: `アクティブMMを ${updated.enabled ? '開始' : '停止'} しました`, ok: true })
+      await load()
+    } catch (e: unknown) {
+      const apiErr = e as { message?: string }
+      setMsg({ text: apiErr.message ?? 'アクティブMMの切り替えに失敗しました', ok: false })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleApplyAccount = async () => {
+    if (!status) return
+
+    if (isDebug) {
+      setStatus({
+        ...status,
+        service_account: selectedAccount,
+        timestamp: new Date().toISOString(),
+      })
+      setMsg({ text: `[DEBUG] AMMの実行口座を ${selectedAccount} にしました`, ok: true })
+      return
+    }
+
+    setSaving(true)
+    setMsg(null)
+    try {
+      await adminToggleMarketMaker({ service_account: selectedAccount })
+      setMsg({ text: `AMMの実行口座を ${selectedAccount} にしました`, ok: true })
+      await load()
+    } catch (e: unknown) {
+      const apiErr = e as { message?: string }
+      setMsg({ text: apiErr.message ?? 'AMMの実行口座更新に失敗しました', ok: false })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleApplyInterval = async () => {
+    if (!status) return
+
+    const seconds = Number(intervalSeconds)
+    if (!Number.isFinite(seconds) || !Number.isInteger(seconds) || seconds < 1) {
+      setMsg({ text: 'AMMの実行間隔は1以上の整数秒で入力してください', ok: false })
+      return
+    }
+
+    if (isDebug) {
+      setStatus({
+        ...status,
+        current_loop_interval_ticks: seconds * 20,
+        timestamp: new Date().toISOString(),
+      })
+      setMsg({ text: `[DEBUG] AMMの実行間隔を ${seconds} 秒にしました`, ok: true })
+      return
+    }
+
+    setSaving(true)
+    setMsg(null)
+    try {
+      await adminToggleMarketMaker({ loop_interval_ticks: seconds * 20, service_account: selectedAccount })
+      setIntervalSeconds(String(seconds))
+      setMsg({ text: `AMMの実行間隔を ${seconds} 秒にしました`, ok: true })
+      await load()
+    } catch (e: unknown) {
+      const apiErr = e as { message?: string }
+      setMsg({ text: apiErr.message ?? 'AMMの実行間隔更新に失敗しました', ok: false })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <p className="admin-loading">読み込み中...</p>
+  if (err) return <p className="admin-err-msg">{err}</p>
+  if (!status) return <p className="admin-err-msg">状態を読み込めませんでした</p>
+
+  return (
+    <div className="arb-panel">
+      <div className="arb-header">
+        <h3 className="admin-section-title">アクティブMM 制御</h3>
+        <button className="admin-edit-btn" onClick={() => { void load() }} disabled={saving}>更新</button>
+      </div>
+
+      <div className="arb-state-row">
+        <span className={`arb-badge ${status.running ? 'on' : 'off'}`}>
+          {status.running ? '稼働中' : '停止中'}
+        </span>
+        <span className="arb-meta">実行口座: {status.service_account}</span>
+        <span className="arb-meta">実行間隔: {Math.max(1, Math.round(status.current_loop_interval_ticks / 20))}秒</span>
+        <span className="arb-meta">監視ペア: {status.tracked_pairs}</span>
+        <span className="arb-meta">状態: PASSIVE {status.passive_pairs} / SQUEEZING {status.squeezing_pairs} / MATCHING {status.matching_pairs}</span>
+        <span className="arb-meta">自前注文: {status.owned_orders}</span>
+        <span className="arb-meta">最終更新: {status.timestamp}</span>
+      </div>
+
+      <p className="admin-backup-desc">
+        裁定取引とは独立した常駐サービスです。板の流動性維持を担当し、停止すると自前注文を引き上げます。
+      </p>
+
+      <div className="admin-form-row">
+        <label>実行口座
+          <select
+            className="admin-input"
+            value={selectedAccount}
+            onChange={(e) => setSelectedAccount(e.target.value)}
+            disabled={saving}
+          >
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>{account.id}</option>
+            ))}
+          </select>
+        </label>
+        <button className="admin-save-btn" type="button" onClick={() => { void handleApplyAccount() }} disabled={saving}>
+          口座反映
+        </button>
+        <label>実行間隔（秒）
+          <input
+            className="admin-input"
+            type="number"
+            min="1"
+            step="1"
+            value={intervalSeconds}
+            onChange={(e) => setIntervalSeconds(e.target.value)}
+            disabled={saving}
+          />
+        </label>
+        <button className="admin-save-btn" type="button" onClick={() => { void handleApplyInterval() }} disabled={saving}>
+          設定反映
+        </button>
+      </div>
+
+      <div className="arb-actions">
+        <button className="admin-submit-btn" type="button" onClick={() => { void handleToggle(true) }} disabled={saving || status.running}>
+          稼働開始
+        </button>
+        <button className="admin-delete-btn" type="button" onClick={() => { void handleToggle(false) }} disabled={saving || !status.running}>
+          停止
+        </button>
+      </div>
+
+      <div className="amm-log-panel">
+        <h4 className="admin-section-title">最近のAMMログ</h4>
+        {status.recent_logs.length === 0 ? (
+          <p className="admin-loading">ログなし</p>
+        ) : (
+          <ul className="pending-list amm-log-list">
+            {status.recent_logs.map((log, idx) => (
+              <li key={`${log.timestamp}-${idx}`} className="pending-dep amm-log-item">
+                <span className="amm-log-message">{log.level} / {log.action} / {log.message}</span>
+                <span className="amm-log-time">{log.timestamp}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {msg && <p className={`admin-msg ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</p>}
+    </div>
+  )
+}
+
 // ─── ペアテーブル ─────────────────────────────────────────────────────────────
 
 function PairTable({ isDebug }: { isDebug: boolean }) {
@@ -1218,6 +1440,10 @@ export default function AdminPage() {
 
         <section className="admin-section">
           <ArbitrageControlPanel isDebug={isDebug} />
+        </section>
+
+        <section className="admin-section">
+          <MarketMakerControlPanel isDebug={isDebug} />
         </section>
 
         <section className="admin-section">

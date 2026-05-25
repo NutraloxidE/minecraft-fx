@@ -365,6 +365,11 @@ public final class ArbitrageService {
             BigDecimal bestAsk = bestAskOrder.getPrice();
             if (bestBid == null || bestAsk == null) return;
 
+            if ("svc:gekiyaba_mm".equals(bestBidOrder.getUuid())
+                    || "svc:gekiyaba_mm".equals(bestAskOrder.getUuid())) {
+                return;
+            }
+
             BigDecimal mid = bestBid.add(bestAsk).divide(new BigDecimal("2"), 8, RoundingMode.HALF_UP);
             if (mid.compareTo(BigDecimal.ZERO) <= 0) return;
 
