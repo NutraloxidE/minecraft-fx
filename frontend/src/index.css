@@ -1324,6 +1324,9 @@ code {
   font-family: var(--mono);
   margin-bottom: 0.5rem;
 }
+.svc-card-actions {
+  margin-bottom: 0.5rem;
+}
 .svc-card-storage { display: flex; flex-direction: column; gap: 0.2rem; }
 .svc-card-row {
   display: flex;
@@ -1335,6 +1338,32 @@ code {
 .svc-card-item { color: var(--text); opacity: 0.6; }
 .svc-card-val  { color: var(--text); font-weight: 500; }
 .svc-card-empty { font-size: 0.75rem; color: var(--text); opacity: 0.35; }
+
+.admin-textarea-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  color: var(--text);
+}
+
+.admin-textarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.82rem;
+  font-family: var(--mono);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+.admin-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
 
 /* ─── ローソク足チャート ───────────────────────────────────── */
 

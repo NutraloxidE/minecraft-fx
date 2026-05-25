@@ -91,6 +91,10 @@ public final class AdminApiRouter {
         app.get   ("/api/admin/web-settings",       this::handleGetWebSettings);
         app.patch ("/api/admin/web-settings",       this::handlePatchWebSettings);
         app.get   ("/api/admin/service-accounts",   this::handleServiceAccounts);
+        app.post  ("/api/admin/service-accounts",   this::handleCreateServiceAccount);
+        app.delete("/api/admin/service-accounts/{name}", this::handleDeleteServiceAccount);
+        app.get   ("/api/admin/fee-settings",       this::handleGetFeeSettings);
+        app.patch ("/api/admin/fee-settings",       this::handlePatchFeeSettings);
         app.get   ("/api/admin/backup/download",    this::handleDownloadServerBackup);
         app.patch ("/api/admin/arbitrage/toggle",   this::handleArbitrageToggle);
         app.get   ("/api/admin/arbitrage/status",   this::handleArbitrageStatus);
@@ -881,6 +885,193 @@ public final class AdminApiRouter {
         ctx.status(200).json(result);
     }
 
+    private void handleCreateServiceAccount(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        Map<String, Object> body = parseBody(ctx);
+        if (body == null) return;
+
+        String raw = getString(body, "name");
+        if (raw == null || raw.isBlank()) {
+            ctx.status(400).json(Map.of("error", "missing_name"));
+            return;
+        }
+
+        String name = normalizeServiceAccountName(raw);
+        if (name == null) {
+            ctx.status(400).json(Map.of("error", "invalid_service_account_name"));
+            return;
+        }
+
+        List<String> nextAccounts = new ArrayList<>(plugin.getConfig().getStringList("serviceAccounts"));
+        if (nextAccounts.contains(name)) {
+            ctx.status(409).json(Map.of("error", "service_account_already_exists"));
+            return;
+        }
+
+        nextAccounts.add(name);
+        try {
+            plugin.getConfig().set("serviceAccounts", nextAccounts);
+            plugin.saveConfig();
+            plugin.reloadPluginConfig();
+        } catch (IllegalArgumentException e) {
+            ctx.status(400).json(Map.of("error", "invalid_service_accounts", "message", e.getMessage()));
+            return;
+        } catch (Exception e) {
+            plugin.getLogger().warning("serviceAccounts の更新に失敗しました: " + e.getMessage());
+            ctx.status(500).json(Map.of("error", "service_accounts_update_failed"));
+            return;
+        }
+
+        ctx.status(201).json(buildServiceAccountEntry(name));
+    }
+
+    private void handleDeleteServiceAccount(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        String raw = ctx.pathParam("name");
+        String name = normalizeServiceAccountName(raw);
+        if (name == null) {
+            ctx.status(400).json(Map.of("error", "invalid_service_account_name"));
+            return;
+        }
+
+        String currentArb = plugin.getPluginConfig().getArbitrageServiceAccount();
+        if (("svc:" + name).equals(currentArb)) {
+            ctx.status(409).json(Map.of("error", "service_account_in_use_by_arbitrage"));
+            return;
+        }
+
+        String accountId = "svc:" + name;
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            com.gekiyabafx.model.PlayerData pd = sm.getData().getPlayers().get(accountId);
+            if (pd != null && hasAnyNonZeroBalance(pd)) {
+                ctx.status(409).json(Map.of("error", "service_account_has_balance"));
+                return;
+            }
+        } finally {
+            sm.unlock();
+        }
+
+        List<String> nextAccounts = new ArrayList<>(plugin.getConfig().getStringList("serviceAccounts"));
+        if (!nextAccounts.remove(name)) {
+            ctx.status(404).json(Map.of("error", "service_account_not_found"));
+            return;
+        }
+
+        try {
+            plugin.getConfig().set("serviceAccounts", nextAccounts);
+            plugin.saveConfig();
+            plugin.reloadPluginConfig();
+        } catch (IllegalArgumentException e) {
+            ctx.status(400).json(Map.of("error", "invalid_service_accounts", "message", e.getMessage()));
+            return;
+        } catch (Exception e) {
+            plugin.getLogger().warning("serviceAccounts の更新に失敗しました: " + e.getMessage());
+            ctx.status(500).json(Map.of("error", "service_accounts_update_failed"));
+            return;
+        }
+
+        ctx.status(200).json(Map.of("name", name, "id", "svc:" + name, "deleted", true));
+    }
+
+    private void handleGetFeeSettings(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        var cfg = plugin.getPluginConfig();
+        Map<String, String> overrides = new LinkedHashMap<>();
+        for (Map.Entry<String, BigDecimal> entry : cfg.getFeeOverrides().entrySet()) {
+            overrides.put(entry.getKey(), entry.getValue().toPlainString());
+        }
+
+        ctx.status(200).json(Map.of(
+                "maker", cfg.getFeeMaker().toPlainString(),
+                "taker", cfg.getFeeTaker().toPlainString(),
+                "fee_overrides", overrides
+        ));
+    }
+
+    private void handlePatchFeeSettings(Context ctx) {
+        if (!requireAdminAuth(ctx)) return;
+
+        Map<String, Object> body = parseBody(ctx);
+        if (body == null) return;
+
+        BigDecimal maker = plugin.getPluginConfig().getFeeMaker();
+        BigDecimal taker = plugin.getPluginConfig().getFeeTaker();
+        Map<String, String> overrides = new LinkedHashMap<>();
+        for (Map.Entry<String, BigDecimal> entry : plugin.getPluginConfig().getFeeOverrides().entrySet()) {
+            overrides.put(entry.getKey(), entry.getValue().toPlainString());
+        }
+
+        if (body.containsKey("maker")) {
+            maker = parseStrictBigDecimal(body.get("maker"));
+            if (!isValidFeeRate(maker)) {
+                ctx.status(400).json(Map.of("error", "invalid_fee_maker"));
+                return;
+            }
+        }
+
+        if (body.containsKey("taker")) {
+            taker = parseStrictBigDecimal(body.get("taker"));
+            if (!isValidFeeRate(taker)) {
+                ctx.status(400).json(Map.of("error", "invalid_fee_taker"));
+                return;
+            }
+        }
+
+        if (body.containsKey("fee_overrides")) {
+            Object raw = body.get("fee_overrides");
+            if (!(raw instanceof Map<?, ?> map)) {
+                ctx.status(400).json(Map.of("error", "invalid_fee_overrides"));
+                return;
+            }
+
+            Map<String, String> next = new LinkedHashMap<>();
+            for (var entry : map.entrySet()) {
+                String key = entry.getKey() != null ? entry.getKey().toString().trim().toLowerCase(Locale.ROOT) : "";
+                if (key.isBlank()) {
+                    ctx.status(400).json(Map.of("error", "invalid_fee_override_key"));
+                    return;
+                }
+                BigDecimal rate = parseStrictBigDecimal(entry.getValue());
+                if (!isValidFeeRate(rate)) {
+                    ctx.status(400).json(Map.of("error", "invalid_fee_override_rate", "currency", key));
+                    return;
+                }
+                next.put(key, rate.toPlainString());
+            }
+            overrides = next;
+        }
+
+        try {
+            plugin.getConfig().set("fee.maker", maker.toPlainString());
+            plugin.getConfig().set("fee.taker", taker.toPlainString());
+            plugin.getConfig().set("feeOverrides", overrides);
+            plugin.saveConfig();
+            plugin.reloadPluginConfig();
+        } catch (IllegalArgumentException e) {
+            ctx.status(400).json(Map.of("error", "invalid_fee_settings", "message", e.getMessage()));
+            return;
+        } catch (Exception e) {
+            plugin.getLogger().warning("fee settings の更新に失敗しました: " + e.getMessage());
+            ctx.status(500).json(Map.of("error", "fee_settings_update_failed"));
+            return;
+        }
+
+        var cfg = plugin.getPluginConfig();
+        Map<String, String> updatedOverrides = new LinkedHashMap<>();
+        cfg.getFeeOverrides().forEach((k, v) -> updatedOverrides.put(k, v.toPlainString()));
+        ctx.status(200).json(Map.of(
+                "maker", cfg.getFeeMaker().toPlainString(),
+                "taker", cfg.getFeeTaker().toPlainString(),
+                "fee_overrides", updatedOverrides,
+                "updated", true
+        ));
+    }
+
     private void handleArbitrageToggle(Context ctx) {
         if (!requireAdminAuth(ctx)) return;
 
@@ -1025,5 +1216,74 @@ public final class AdminApiRouter {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private static boolean isValidFeeRate(BigDecimal rate) {
+        return rate != null
+                && rate.compareTo(BigDecimal.ZERO) >= 0
+                && rate.compareTo(BigDecimal.ONE) <= 0;
+    }
+
+    private static String normalizeServiceAccountName(String raw) {
+        if (raw == null) return null;
+        String s = raw.trim().toLowerCase(Locale.ROOT);
+        if (s.startsWith("svc:")) {
+            s = s.substring(4);
+        }
+        if (s.isBlank()) return null;
+        if (!s.matches("[a-z0-9][a-z0-9._-]{0,63}")) return null;
+        return s;
+    }
+
+    private Map<String, Object> buildServiceAccountEntry(String name) {
+        String id = "svc:" + name;
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            com.gekiyabafx.model.PlayerData pd = sm.getData().getPlayers().get(id);
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("name", name);
+            entry.put("id", id);
+            if (pd != null) {
+                Map<String, String> hs = new LinkedHashMap<>();
+                pd.getHotStorage().forEach((k, v) -> hs.put(k, bdStr(v)));
+                entry.put("hot_storage", hs);
+            } else {
+                entry.put("hot_storage", Map.of());
+            }
+            return entry;
+        } finally {
+            sm.unlock();
+        }
+    }
+
+    private static boolean hasAnyNonZeroBalance(com.gekiyabafx.model.PlayerData pd) {
+        for (BigDecimal v : pd.getHotStorage().values()) {
+            if (v != null && v.compareTo(BigDecimal.ZERO) > 0) {
+                return true;
+            }
+        }
+
+        for (Map<String, BigDecimal> perPair : pd.getLockedBalance().values()) {
+            if (perPair == null) continue;
+            for (BigDecimal v : perPair.values()) {
+                if (v != null && v.compareTo(BigDecimal.ZERO) > 0) {
+                    return true;
+                }
+            }
+        }
+
+        for (Integer v : pd.getPendingWithdraw().values()) {
+            if (v != null && v > 0) {
+                return true;
+            }
+        }
+        for (Integer v : pd.getPendingDeposit().values()) {
+            if (v != null && v > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

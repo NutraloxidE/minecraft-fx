@@ -18,8 +18,12 @@ import {
   adminReorderPairs,
   adminDeletePair,
   adminFetchServiceAccounts,
+  adminCreateServiceAccount,
+  adminDeleteServiceAccount,
   adminFetchWebSettings,
   adminPatchWebSettings,
+  adminFetchFeeSettings,
+  adminPatchFeeSettings,
   adminFetchArbitrageStatus,
   adminToggleArbitrage,
   adminDownloadServerBackup,
@@ -30,7 +34,7 @@ import {
   DEBUG_ARBITRAGE_STATUS,
 } from '@/lib/debugData'
 import type { AdminPair, CreatePairRequest } from '@/types/api'
-import type { ServiceAccount, ArbitrageStatusResponse, AdminWebSettingsResponse } from '@/lib/api'
+import type { ServiceAccount, ArbitrageStatusResponse, AdminWebSettingsResponse, AdminFeeSettingsResponse } from '@/lib/api'
 
 // ─── ペア作成フォーム ──────────────────────────────────────────────────────────
 
@@ -243,6 +247,9 @@ function PairRow({
 function ServiceAccountBalances({ isDebug }: { isDebug: boolean }) {
   const [accounts, setAccounts] = useState<ServiceAccount[]>([])
   const [loading,  setLoading]  = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [newAccountName, setNewAccountName] = useState('')
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [err,      setErr]      = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -257,11 +264,87 @@ function ServiceAccountBalances({ isDebug }: { isDebug: boolean }) {
 
   useEffect(() => { load() }, [load])
 
+  const normalizeName = (value: string) => value.trim().toLowerCase().replace(/^svc:/, '')
+
+  const handleCreate = async () => {
+    const normalized = normalizeName(newAccountName)
+    if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(normalized)) {
+      setMsg({ text: 'サービスアカウント名は英小文字・数字・._- のみで入力してください', ok: false })
+      return
+    }
+
+    if (isDebug) {
+      if (accounts.some((a) => a.name === normalized)) {
+        setMsg({ text: `[DEBUG] 既に存在します: svc:${normalized}`, ok: false })
+        return
+      }
+      setAccounts((prev) => [...prev, { name: normalized, id: `svc:${normalized}`, hot_storage: {} }])
+      setNewAccountName('')
+      setMsg({ text: `[DEBUG] 作成: svc:${normalized}`, ok: true })
+      return
+    }
+
+    setBusy(true)
+    setMsg(null)
+    try {
+      await adminCreateServiceAccount(normalized)
+      setNewAccountName('')
+      setMsg({ text: `作成しました: svc:${normalized}`, ok: true })
+      await load()
+    } catch (e: unknown) {
+      const apiErr = e as { message?: string }
+      setMsg({ text: apiErr.message ?? 'サービスアカウント作成に失敗しました', ok: false })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleDelete = async (accountName: string) => {
+    const confirmation = window.prompt(`サービスアカウント "svc:${accountName}" を削除するには (delete) と入力してください`)
+    if (confirmation !== 'delete') {
+      setMsg({ text: '削除をキャンセルしました（delete 未入力）', ok: false })
+      return
+    }
+
+    if (isDebug) {
+      setAccounts((prev) => prev.filter((a) => a.name !== accountName))
+      setMsg({ text: `[DEBUG] 削除: svc:${accountName}`, ok: true })
+      return
+    }
+
+    setBusy(true)
+    setMsg(null)
+    try {
+      await adminDeleteServiceAccount(accountName)
+      setMsg({ text: `削除しました: svc:${accountName}`, ok: true })
+      await load()
+    } catch (e: unknown) {
+      const apiErr = e as { message?: string }
+      setMsg({ text: apiErr.message ?? 'サービスアカウント削除に失敗しました', ok: false })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="svc-balances">
       <div className="svc-balances-header">
         <h3 className="admin-section-title">サービスアカウント残高</h3>
-        <button className="admin-edit-btn" onClick={load} disabled={loading}>更新</button>
+        <button className="admin-edit-btn" onClick={load} disabled={loading || busy}>更新</button>
+      </div>
+      <div className="admin-form-row">
+        <label>新規サービスアカウント名
+          <input
+            className="admin-input"
+            placeholder="例: market-bot-2"
+            value={newAccountName}
+            onChange={(e) => setNewAccountName(e.target.value)}
+            disabled={busy || loading}
+          />
+        </label>
+        <button className="admin-submit-btn" type="button" onClick={handleCreate} disabled={busy || loading}>
+          追加
+        </button>
       </div>
       {loading && <p className="admin-loading">読み込み中...</p>}
       {err     && <p className="admin-err-msg">{err}</p>}
@@ -271,6 +354,11 @@ function ServiceAccountBalances({ isDebug }: { isDebug: boolean }) {
             <div key={a.id} className="svc-card">
               <div className="svc-card-name">{a.name}</div>
               <div className="svc-card-id">{a.id}</div>
+              <div className="svc-card-actions">
+                <button className="admin-delete-btn" type="button" onClick={() => { void handleDelete(a.name) }} disabled={busy}>
+                  削除
+                </button>
+              </div>
               <div className="svc-card-storage">
                 {Object.keys(a.hot_storage).length === 0
                   ? <span className="svc-card-empty">残高なし</span>
@@ -286,6 +374,199 @@ function ServiceAccountBalances({ isDebug }: { isDebug: boolean }) {
           ))}
         </div>
       )}
+      {msg && <p className={`admin-msg ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</p>}
+    </div>
+  )
+}
+
+function FeeSettingsPanel({ isDebug }: { isDebug: boolean }) {
+  const [settings, setSettings] = useState<AdminFeeSettingsResponse | null>(null)
+  const [makerInput, setMakerInput] = useState('0.0010')
+  const [takerInput, setTakerInput] = useState('0.0012')
+  const [overridesInput, setOverridesInput] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
+
+  const formatOverrides = (overrides: Record<string, string>) =>
+    Object.entries(overrides)
+      .map(([k, v]) => `${k}=${v}`)
+      .join('\n')
+
+  const parseOverrides = (input: string): { ok: true; value: Record<string, string> } | { ok: false; message: string } => {
+    const out: Record<string, string> = {}
+    const lines = input.split(/\r?\n/)
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const sep = trimmed.indexOf('=')
+      if (sep < 1) {
+        return { ok: false, message: `feeOverrides の形式が不正です: ${trimmed}` }
+      }
+      const key = trimmed.slice(0, sep).trim().toLowerCase()
+      const value = trimmed.slice(sep + 1).trim()
+      if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(key)) {
+        return { ok: false, message: `通貨キーが不正です: ${key}` }
+      }
+      const rate = Number(value)
+      if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
+        return { ok: false, message: `手数料率は 0 以上 1 以下で入力してください: ${trimmed}` }
+      }
+      out[key] = String(rate)
+    }
+    return { ok: true, value: out }
+  }
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setMsg(null)
+    try {
+      if (isDebug) {
+        const debugSettings: AdminFeeSettingsResponse = {
+          maker: '0.0010',
+          taker: '0.0012',
+          fee_overrides: { tempkey: '0.0050' },
+        }
+        setSettings(debugSettings)
+        setMakerInput(debugSettings.maker)
+        setTakerInput(debugSettings.taker)
+        setOverridesInput(formatOverrides(debugSettings.fee_overrides))
+        return
+      }
+      const res = await adminFetchFeeSettings()
+      setSettings(res)
+      setMakerInput(res.maker)
+      setTakerInput(res.taker)
+      setOverridesInput(formatOverrides(res.fee_overrides))
+    } catch (e: unknown) {
+      const apiErr = e as { message?: string }
+      setMsg({ text: apiErr.message ?? '手数料設定の取得に失敗しました', ok: false })
+    } finally {
+      setLoading(false)
+    }
+  }, [isDebug])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const handleSave = async () => {
+    const maker = Number(makerInput)
+    const taker = Number(takerInput)
+    if (!Number.isFinite(maker) || maker < 0 || maker > 1) {
+      setMsg({ text: 'maker は 0 以上 1 以下で入力してください', ok: false })
+      return
+    }
+    if (!Number.isFinite(taker) || taker < 0 || taker > 1) {
+      setMsg({ text: 'taker は 0 以上 1 以下で入力してください', ok: false })
+      return
+    }
+
+    const parsed = parseOverrides(overridesInput)
+    if (!parsed.ok) {
+      setMsg({ text: parsed.message, ok: false })
+      return
+    }
+
+    if (isDebug) {
+      const next: AdminFeeSettingsResponse = {
+        maker: String(maker),
+        taker: String(taker),
+        fee_overrides: parsed.value,
+      }
+      setSettings(next)
+      setMakerInput(next.maker)
+      setTakerInput(next.taker)
+      setOverridesInput(formatOverrides(next.fee_overrides))
+      setMsg({ text: `[DEBUG] 手数料設定を更新しました (maker=${next.maker}, taker=${next.taker})`, ok: true })
+      return
+    }
+
+    setSaving(true)
+    setMsg(null)
+    try {
+      const updated = await adminPatchFeeSettings({
+        maker: String(maker),
+        taker: String(taker),
+        feeOverrides: parsed.value,
+      })
+      setSettings(updated)
+      setMakerInput(updated.maker)
+      setTakerInput(updated.taker)
+      setOverridesInput(formatOverrides(updated.fee_overrides))
+      setMsg({ text: `手数料設定を更新しました (maker=${updated.maker}, taker=${updated.taker})`, ok: true })
+    } catch (e: unknown) {
+      const apiErr = e as { message?: string }
+      setMsg({ text: apiErr.message ?? '手数料設定の更新に失敗しました', ok: false })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="admin-backup-panel">
+      <h3 className="admin-section-title">手数料設定</h3>
+      <p className="admin-backup-desc">
+        `maker` / `taker` は 0〜1 の率で指定します。feeOverrides は 1行1件で `currency=rate` 形式（例: tempkey=0.0050）。
+      </p>
+
+      {loading ? (
+        <p className="admin-loading">読み込み中...</p>
+      ) : (
+        <>
+          <div className="admin-form-row">
+            <label>maker
+              <input
+                className="admin-input"
+                type="number"
+                min="0"
+                max="1"
+                step="0.0001"
+                value={makerInput}
+                onChange={(e) => setMakerInput(e.target.value)}
+                disabled={saving}
+              />
+            </label>
+            <label>taker
+              <input
+                className="admin-input"
+                type="number"
+                min="0"
+                max="1"
+                step="0.0001"
+                value={takerInput}
+                onChange={(e) => setTakerInput(e.target.value)}
+                disabled={saving}
+              />
+            </label>
+          </div>
+
+          <label className="admin-textarea-wrap">feeOverrides (currency=rate)
+            <textarea
+              className="admin-textarea"
+              value={overridesInput}
+              onChange={(e) => setOverridesInput(e.target.value)}
+              disabled={saving}
+              rows={6}
+              placeholder={'tempkey=0.0050\nspecialcoin=0.0000'}
+            />
+          </label>
+
+          <div className="admin-form-row">
+            <button className="admin-submit-btn" type="button" onClick={handleSave} disabled={saving}>
+              {saving ? '保存中...' : '保存'}
+            </button>
+            <button className="admin-edit-btn" type="button" onClick={() => { void load() }} disabled={saving || loading}>
+              再読込
+            </button>
+          </div>
+        </>
+      )}
+
+      {settings && !loading && (
+        <p className="admin-backup-desc">現在値: maker={settings.maker}, taker={settings.taker}, overrides={Object.keys(settings.fee_overrides).length}件</p>
+      )}
+      {msg && <p className={`admin-msg ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</p>}
     </div>
   )
 }
@@ -941,6 +1222,10 @@ export default function AdminPage() {
 
         <section className="admin-section">
           <ServiceAccountBalances isDebug={isDebug} />
+        </section>
+
+        <section className="admin-section">
+          <FeeSettingsPanel isDebug={isDebug} />
         </section>
 
         <section className="admin-section">

@@ -225,6 +225,12 @@ export interface ServiceAccount {
 export const adminFetchServiceAccounts = (): Promise<ServiceAccount[]> =>
   request('GET', '/api/admin/service-accounts', getAdminToken())
 
+export const adminCreateServiceAccount = (name: string): Promise<ServiceAccount> =>
+  request('POST', '/api/admin/service-accounts', getAdminToken(), { name })
+
+export const adminDeleteServiceAccount = (name: string): Promise<{ name: string; id: string; deleted: boolean }> =>
+  request('DELETE', `/api/admin/service-accounts/${encodeURIComponent(name)}`, getAdminToken())
+
 export const adminFetchPairs = (): Promise<AdminPair[]> =>
   request('GET', '/api/admin/pairs', getAdminToken())
 
@@ -271,6 +277,32 @@ export const adminPatchWebSettings = (req: AdminPatchWebSettingsRequest): Promis
     server_ip: req.serverIp,
     login_url_scheme: req.loginUrlScheme,
     login_url_include_port: req.loginUrlIncludePort,
+  })
+
+export interface AdminFeeSettingsResponse {
+  maker: string
+  taker: string
+  fee_overrides: Record<string, string>
+}
+
+export interface AdminPatchFeeSettingsRequest {
+  maker?: string
+  taker?: string
+  feeOverrides?: Record<string, string>
+}
+
+export interface AdminPatchFeeSettingsResponse extends AdminFeeSettingsResponse {
+  updated: boolean
+}
+
+export const adminFetchFeeSettings = (): Promise<AdminFeeSettingsResponse> =>
+  request('GET', '/api/admin/fee-settings', getAdminToken())
+
+export const adminPatchFeeSettings = (req: AdminPatchFeeSettingsRequest): Promise<AdminPatchFeeSettingsResponse> =>
+  request('PATCH', '/api/admin/fee-settings', getAdminToken(), {
+    ...(req.maker !== undefined ? { maker: req.maker } : {}),
+    ...(req.taker !== undefined ? { taker: req.taker } : {}),
+    ...(req.feeOverrides !== undefined ? { fee_overrides: req.feeOverrides } : {}),
   })
 
 export interface ArbitrageSkipRecord {
