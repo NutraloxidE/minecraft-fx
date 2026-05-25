@@ -125,6 +125,7 @@ export default function TradePage() {
         <section className="trade-section trade-section-form">
           <OrderForm
             pair={selectedPair}
+            orderBook={orderBook}
             hotStorage={hotStorage}
             onOrderPlaced={handleOrderPlaced}
             externalPrice={externalPrice}

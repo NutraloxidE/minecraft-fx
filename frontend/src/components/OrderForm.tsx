@@ -9,10 +9,11 @@ import { useState, useEffect } from 'react'
 import { placeOrder, fetchPairFee } from '@/lib/api'
 import { ApiException } from '@/lib/api'
 import type { PairFeeResponse } from '@/lib/api'
-import type { PairSummary, PlaceOrderResponse } from '@/types/api'
+import type { PairSummary, PlaceOrderResponse, OrderBookResponse, OrderBookEntry } from '@/types/api'
 
 interface Props {
   pair: PairSummary | null
+  orderBook: OrderBookResponse | null
   hotStorage: Record<string, string>
   onOrderPlaced: (res: PlaceOrderResponse) => void
   externalPrice?: { price: string; side: 'BUY' | 'SELL'; key: number } | null
@@ -24,6 +25,7 @@ type OrderType = 'LIMIT' | 'MARKET'
 interface SideFormProps {
   side: Side
   pair: PairSummary
+  orderBook: OrderBookResponse | null
   base: string
   quote: string
   hotStorage: Record<string, string>
@@ -32,7 +34,7 @@ interface SideFormProps {
   feeRate: PairFeeResponse | null
 }
 
-function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, externalPrice, feeRate }: SideFormProps) {
+function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrderPlaced, externalPrice, feeRate }: SideFormProps) {
   const [type, setType] = useState<OrderType>('LIMIT')
   const [price, setPrice] = useState(pair.last_price ?? '')
   const [amount, setAmount] = useState('')
@@ -175,6 +177,77 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
     return null
   })()
 
+  const marketEstimate = (() => {
+    if (type !== 'MARKET' || !orderBook) return null
+
+    const availableAmount = (entry: OrderBookEntry): number => {
+      const a = parseFloat(entry.amount)
+      const f = parseFloat(entry.filled)
+      if (isNaN(a) || a <= 0) return 0
+      if (isNaN(f) || f <= 0) return a
+      return Math.max(0, a - f)
+    }
+
+    const levels = (side === 'BUY' ? orderBook.asks : orderBook.bids)
+      .map((entry) => {
+        const p = parseFloat(entry.price ?? '')
+        return {
+          price: p,
+          amount: availableAmount(entry),
+        }
+      })
+      .filter((lv) => !isNaN(lv.price) && lv.price > 0 && lv.amount > 0)
+      .sort((a, b) => (side === 'BUY' ? a.price - b.price : b.price - a.price))
+
+    if (side === 'BUY') {
+      const budget = parseFloat(maxSpend)
+      if (isNaN(budget) || budget <= 0) return null
+
+      let remain = budget
+      let bought = 0
+      let spent = 0
+
+      for (const lv of levels) {
+        if (remain <= 1e-10) break
+        const maxByBudget = remain / lv.price
+        const take = Math.min(lv.amount, maxByBudget)
+        if (take <= 0) continue
+        const cost = take * lv.price
+        bought += take
+        spent += cost
+        remain -= cost
+      }
+
+      return {
+        baseAmount: bought,
+        quoteAmount: spent,
+        fullyFilled: remain <= 1e-8,
+      }
+    }
+
+    const target = parseFloat(amount)
+    if (isNaN(target) || target <= 0) return null
+
+    let remain = target
+    let sold = 0
+    let received = 0
+
+    for (const lv of levels) {
+      if (remain <= 1e-10) break
+      const take = Math.min(lv.amount, remain)
+      if (take <= 0) continue
+      sold += take
+      received += take * lv.price
+      remain -= take
+    }
+
+    return {
+      baseAmount: sold,
+      quoteAmount: received,
+      fullyFilled: remain <= 1e-8,
+    }
+  })()
+
   return (
     <form className={`order-col${isBuy ? ' buy-col' : ' sell-col'}${flashing ? ' order-col-flash' : ''}`} onSubmit={handleSubmit}>
       {/* 列ヘッダー */}
@@ -191,7 +264,7 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
             className={`type-tab${type === t ? ` active ${isBuy ? 'buy' : 'sell'}` : ''}`}
             onClick={() => { setType(t); setPct(0) }}
           >
-            {t === 'LIMIT' ? '指値' : '成行'}
+            {t === 'LIMIT' ? '指値' : '成り行き注文'}
           </button>
         ))}
       </div>
@@ -218,7 +291,7 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
       {/* 数量（LIMIT または MARKET SELL） */}
       {(type === 'LIMIT' || (type === 'MARKET' && side === 'SELL')) && (
         <label className="order-field">
-          <span>数量 ({base})</span>
+          <span>{type === 'MARKET' && side === 'SELL' ? `売却総量 (${base})` : `数量 (${base})`}</span>
           <div className="order-price-input-wrap">
             <button type="button" className="price-step-btn" onClick={(e) => adjustAmount(-1, e.ctrlKey ? 10 : 1)}>▼</button>
             <input
@@ -237,7 +310,7 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
       {/* 最大支払い（MARKET BUY） */}
       {type === 'MARKET' && side === 'BUY' && (
         <label className="order-field">
-          <span>最大支払い ({quote})</span>
+          <span>最大総支払額 ({quote})</span>
           <div className="order-price-input-wrap">
             <button type="button" className="price-step-btn" onClick={(e) => adjustMaxSpend(-1, e.ctrlKey ? 10 : 1)}>▼</button>
             <input
@@ -289,6 +362,23 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
       {/* 最大値表示 */}
       <div className="order-max-info">{maxInfoText}</div>
 
+      {/* 成り行きの現在板ベース見込み */}
+      {type === 'MARKET' && (
+        <div className="order-market-estimate">
+          {marketEstimate
+            ? (
+              marketEstimate.baseAmount > 0
+                ? (
+                  side === 'BUY'
+                    ? `現在板での見込み: ${marketEstimate.baseAmount.toFixed(4)} ${base} 購入 / ${marketEstimate.quoteAmount.toFixed(4)} ${quote} 消費${marketEstimate.fullyFilled ? '' : '（板不足で一部約定）'}`
+                    : `現在板での見込み: ${marketEstimate.baseAmount.toFixed(4)} ${base} 売却 / ${marketEstimate.quoteAmount.toFixed(4)} ${quote} 受取${marketEstimate.fullyFilled ? '' : '（板不足で一部約定）'}`
+                )
+                : '現在板での見込み: 約定できる反対板がありません'
+            )
+            : (side === 'BUY' ? '現在板での見込み: 最大総支払額を入力すると表示されます' : '現在板での見込み: 売却総量を入力すると表示されます')}
+        </div>
+      )}
+
       {/* 予想手数料 */}
       {feeRate && (() => {
         const takerRate = parseFloat(isBuy ? feeRate.taker_base : feeRate.taker_quote)
@@ -326,7 +416,7 @@ function OrderSideForm({ side, pair, base, quote, hotStorage, onOrderPlaced, ext
   )
 }
 
-export default function OrderForm({ pair, hotStorage, onOrderPlaced, externalPrice }: Props) {
+export default function OrderForm({ pair, orderBook, hotStorage, onOrderPlaced, externalPrice }: Props) {
   const [feeRate, setFeeRate] = useState<PairFeeResponse | null>(null)
 
   useEffect(() => {
@@ -345,8 +435,8 @@ export default function OrderForm({ pair, hotStorage, onOrderPlaced, externalPri
 
   return (
     <div className="order-form-dual">
-      <OrderSideForm side="BUY"  pair={pair} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} />
-      <OrderSideForm side="SELL" pair={pair} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} />
+      <OrderSideForm side="BUY"  pair={pair} orderBook={orderBook} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} />
+      <OrderSideForm side="SELL" pair={pair} orderBook={orderBook} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} />
     </div>
   )
 }

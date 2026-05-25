@@ -710,6 +710,15 @@ code {
   letter-spacing: 0.01em;
 }
 
+.order-market-estimate {
+  font-size: 0.72rem;
+  color: var(--text);
+  opacity: 0.65;
+  font-family: var(--mono);
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
 .order-fee-info {
   font-size: 0.72rem;
   color: var(--text);
