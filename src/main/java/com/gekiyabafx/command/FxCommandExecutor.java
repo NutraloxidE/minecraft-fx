@@ -89,7 +89,7 @@ public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
         String sub = args[0].toLowerCase();
 
         switch (sub) {
-            case "login"     -> handleLogin(sender);
+            case "login"     -> handleLogin(sender, args);
             case "deposit"   -> handleDeposit(sender, args);
             case "withdraw"  -> handleWithdraw(sender, args);
             case "removeatm" -> handleRemoveAtm(sender, args);
@@ -116,6 +116,10 @@ public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
         }
 
         String sub = args[0].toLowerCase();
+
+        if ("login".equals(sub) && args.length == 2) {
+            return filterByPrefix(List.of("longer"), args[1]);
+        }
 
         if (("deposit".equals(sub) || "withdraw".equals(sub)) && args.length == 2) {
             return filterByPrefix(getCurrencyItemsFromPairs(), args[1]);
@@ -178,7 +182,7 @@ public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
      *
      * @param sender コマンド送信者
      */
-    private void handleLogin(CommandSender sender) {
+    private void handleLogin(CommandSender sender, String[] args) {
         // プレイヤーのみ実行可能
         if (!(sender instanceof Player player)) {
             sender.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
@@ -197,6 +201,7 @@ public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
 
         String uuid = player.getUniqueId().toString();
         String playerName = player.getName();
+        boolean longer = args.length >= 2 && "longer".equalsIgnoreCase(args[1]);
 
         // ─── プレイヤーレコードの自動作成 ──────────────────────────────────────
         StorageManager sm = StorageManager.getInstance();
@@ -222,7 +227,7 @@ public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
         }
 
         // ─── OTP 生成 ──────────────────────────────────────────────────────────
-        OtpManager.OtpEntry entry = playerOtpManager.generate(uuid);
+        OtpManager.OtpEntry entry = playerOtpManager.generate(uuid, longer);
         long expireMinutes = plugin.getPluginConfig().getOtpExpireSeconds() / 60;
 
         // ─── ログイン URL の構築 ────────────────────────────────────────────────
@@ -230,10 +235,13 @@ public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
 
         // ─── チャットメッセージ送信（ClickEvent 付き） ─────────────────────────
         player.sendMessage(
-                Component.text("[GekiyabaFX] ", NamedTextColor.GOLD)
-                        .append(Component.text("ログインURLを生成しました", NamedTextColor.WHITE))
-                        .append(Component.text("（有効期限: " + expireMinutes + "分）", NamedTextColor.GRAY))
+            Component.text("[GekiyabaFX] ", NamedTextColor.GOLD)
+                .append(Component.text(longer ? "長時間ログインURLを生成しました" : "ログインURLを生成しました", NamedTextColor.WHITE))
+                .append(Component.text("（有効期限: " + expireMinutes + "分）", NamedTextColor.GRAY))
         );
+        if (longer) {
+            player.sendMessage(Component.text("  このURLでログインするとセッションは24時間維持されます。", NamedTextColor.GRAY));
+        }
         player.sendMessage(
                 Component.text("► ", NamedTextColor.GOLD)
                         .append(
@@ -297,6 +305,8 @@ public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
             if (sender.hasPermission("gekiyabafx.login")) {
                 sender.sendMessage(Component.text("  /" + label + " login", NamedTextColor.AQUA)
                     .append(Component.text(" - プレイヤーログインURLを発行", NamedTextColor.GRAY)));
+                sender.sendMessage(Component.text("  /" + label + " login longer", NamedTextColor.AQUA)
+                    .append(Component.text(" - 24時間セッションのログインURLを発行", NamedTextColor.GRAY)));
                 sender.sendMessage(Component.text("  /" + label + " deposit <keyname> <amount>", NamedTextColor.AQUA)
                     .append(Component.text(" - インベントリからホット残高へ預入", NamedTextColor.GRAY)));
                 sender.sendMessage(Component.text("  /" + label + " withdraw <keyname> <amount>", NamedTextColor.AQUA)

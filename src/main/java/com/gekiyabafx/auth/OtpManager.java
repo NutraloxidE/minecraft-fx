@@ -54,10 +54,14 @@ public final class OtpManager {
         /** 有効期限のUnixタイムスタンプ（秒）。 */
         private final long expiresAt;
 
-        OtpEntry(String otp, String identity, long expiresAt) {
+        /** true の場合はログイン後セッションを長めに発行する。 */
+        private final boolean longSession;
+
+        OtpEntry(String otp, String identity, long expiresAt, boolean longSession) {
             this.otp       = otp;
             this.identity  = identity;
             this.expiresAt = expiresAt;
+            this.longSession = longSession;
         }
 
         /** @return OTP 文字列 */
@@ -68,6 +72,9 @@ public final class OtpManager {
 
         /** @return 有効期限のUnixタイムスタンプ（秒） */
         public long getExpiresAt()  { return expiresAt; }
+
+        /** @return 長時間セッション要求フラグ */
+        public boolean isLongSession() { return longSession; }
 
         /** @return OTP が現在有効かどうか */
         public boolean isValid() {
@@ -113,6 +120,17 @@ public final class OtpManager {
      * @return 生成した {@link OtpEntry}
      */
     public OtpEntry generate(String identity) {
+        return generate(identity, false);
+    }
+
+    /**
+     * 新しい OTP を生成して返す（長時間セッション指定対応）。
+     *
+     * @param identity    紐づける識別子
+     * @param longSession true の場合、認証後に長時間セッションを要求する
+     * @return 生成した {@link OtpEntry}
+     */
+    public OtpEntry generate(String identity, boolean longSession) {
         // 既存の OTP を無効化する（再発行時の古い OTP が残らないようにする）
         String existingOtp = identityToOtp.remove(identity);
         if (existingOtp != null) {
@@ -122,7 +140,7 @@ public final class OtpManager {
         // 新しい OTP を生成する
         String otp = generateRandomOtp();
         long expiresAt = Instant.now().getEpochSecond() + expireSeconds;
-        OtpEntry entry = new OtpEntry(otp, identity, expiresAt);
+        OtpEntry entry = new OtpEntry(otp, identity, expiresAt, longSession);
 
         otpToEntry.put(otp, entry);
         identityToOtp.put(identity, otp);

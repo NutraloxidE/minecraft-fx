@@ -42,6 +42,8 @@ import java.util.Map;
  */
 public final class AuthRouter {
 
+    private static final long LONG_SESSION_EXPIRE_SECONDS = 24L * 60L * 60L;
+
     private final OtpManager     playerOtpManager;
     private final OtpManager     adminOtpManager;
     private final SessionManager playerSessionManager;
@@ -157,7 +159,9 @@ public final class AuthRouter {
         }
 
         // ── セッション発行 ───────────────────────────────────────────────────
-        SessionManager.SessionEntry session = sessionManager.create(otpEntry.getIdentity());
+        SessionManager.SessionEntry session = otpEntry.isLongSession()
+            ? sessionManager.create(otpEntry.getIdentity(), LONG_SESSION_EXPIRE_SECONDS)
+            : sessionManager.create(otpEntry.getIdentity());
 
         AtmSessionManager.AtmSessionState atmState = AtmSessionManager.AtmSessionState.inactive();
         if (atmSessionManager != null) {

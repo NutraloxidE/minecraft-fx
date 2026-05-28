@@ -95,8 +95,20 @@ public final class SessionManager {
      * @return 生成した {@link SessionEntry}
      */
     public SessionEntry create(String identity) {
+        return create(identity, expireSeconds);
+    }
+
+    /**
+     * 新しいセッショントークンを生成して返す（有効期限を個別指定）。
+     *
+     * @param identity            紐づける識別子
+     * @param customExpireSeconds このセッションの有効期限（秒）
+     * @return 生成した {@link SessionEntry}
+     */
+    public SessionEntry create(String identity, long customExpireSeconds) {
         String token   = UUID.randomUUID().toString();
-        long expiresAt = Instant.now().getEpochSecond() + expireSeconds;
+        long effectiveExpire = Math.max(1L, customExpireSeconds);
+        long expiresAt = Instant.now().getEpochSecond() + effectiveExpire;
         SessionEntry entry = new SessionEntry(token, identity, expiresAt);
         tokenToEntry.put(token, entry);
         return entry;
