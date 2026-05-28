@@ -17,6 +17,7 @@ interface Props {
   hotStorage: Record<string, string>
   onOrderPlaced: (res: PlaceOrderResponse) => void
   externalPrice?: { price: string; side: 'BUY' | 'SELL'; key: number } | null
+  forceSide?: Side
 }
 
 type Side = 'BUY' | 'SELL'
@@ -479,7 +480,7 @@ function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrder
   )
 }
 
-export default function OrderForm({ pair, orderBook, hotStorage, onOrderPlaced, externalPrice }: Props) {
+export default function OrderForm({ pair, orderBook, hotStorage, onOrderPlaced, externalPrice, forceSide }: Props) {
   const [feeRate, setFeeRate] = useState<PairFeeResponse | null>(null)
   const [advancedMode, setAdvancedMode] = useState<boolean>(() => {
     try {
@@ -521,9 +522,13 @@ export default function OrderForm({ pair, orderBook, hotStorage, onOrderPlaced, 
         />
         <span>上級者向け設定（TP/SLを表示）</span>
       </label>
-      <div className="order-form-dual">
-        <OrderSideForm side="BUY"  pair={pair} orderBook={orderBook} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} advancedMode={advancedMode} />
-        <OrderSideForm side="SELL" pair={pair} orderBook={orderBook} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} advancedMode={advancedMode} />
+      <div className={`order-form-dual${forceSide ? ' single-side' : ''}`}>
+        {(!forceSide || forceSide === 'BUY') && (
+          <OrderSideForm side="BUY" pair={pair} orderBook={orderBook} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} advancedMode={advancedMode} />
+        )}
+        {(!forceSide || forceSide === 'SELL') && (
+          <OrderSideForm side="SELL" pair={pair} orderBook={orderBook} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} advancedMode={advancedMode} />
+        )}
       </div>
     </>
   )
