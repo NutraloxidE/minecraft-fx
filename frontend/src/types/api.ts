@@ -28,7 +28,7 @@ export interface PairSummary {
 export interface OrderBookEntry {
   order_id: string
   uuid: string
-  type: 'LIMIT' | 'MARKET'
+  type: 'LIMIT' | 'MARKET' | 'STOP_MARKET' | 'TAKE_PROFIT_MARKET'
   side: 'BUY' | 'SELL'
   price: string | null
   amount: string
@@ -44,9 +44,13 @@ export interface OrderBookResponse {
 }
 
 export interface Execution {
-  execution_id: string
-  buyer_uuid: string
-  seller_uuid: string
+  execution_id?: string
+  buyer_uuid?: string | null
+  seller_uuid?: string | null
+  buy_order_id?: string | null
+  sell_order_id?: string | null
+  atm_id?: string | null
+  atm_grade?: string | null
   price: string
   amount: string
   timestamp: number
@@ -71,9 +75,10 @@ export interface PlayerStateResponse {
 export interface OpenOrder {
   order_id: string
   pair_id: string
-  type: 'LIMIT' | 'MARKET'
+  type: 'LIMIT' | 'MARKET' | 'STOP_MARKET' | 'TAKE_PROFIT_MARKET'
   side: 'BUY' | 'SELL'
   price: string | null
+  trigger_price?: string | null
   amount: string
   filled: string
   status: 'OPEN' | 'PARTIALLY_FILLED'
@@ -83,10 +88,11 @@ export interface OpenOrder {
 export interface PlaceOrderRequest {
   pair_id: string
   side: 'BUY' | 'SELL'
-  type: 'LIMIT' | 'MARKET'
+  type: 'LIMIT' | 'MARKET' | 'STOP_MARKET' | 'TAKE_PROFIT_MARKET'
   price?: string
   amount?: string
   max_spend?: string
+  trigger_price?: string
 }
 
 export interface PlaceOrderResponse {
@@ -95,10 +101,15 @@ export interface PlaceOrderResponse {
 }
 
 export interface ExecutionResult {
-  execution_id: string
+  execution_id?: string
   price: string
   amount: string
-  timestamp: number
+  timestamp?: number
+  created_at?: number
+  buyer_uuid?: string | null
+  seller_uuid?: string | null
+  buy_order_id?: string | null
+  sell_order_id?: string | null
 }
 
 export interface CancelOrderResponse {

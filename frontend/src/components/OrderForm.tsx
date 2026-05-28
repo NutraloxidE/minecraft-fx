@@ -20,7 +20,7 @@ interface Props {
 }
 
 type Side = 'BUY' | 'SELL'
-type OrderType = 'LIMIT' | 'MARKET'
+type OrderType = 'LIMIT' | 'MARKET' | 'STOP_MARKET' | 'TAKE_PROFIT_MARKET'
 
 interface SideFormProps {
   side: Side
@@ -32,11 +32,13 @@ interface SideFormProps {
   onOrderPlaced: (res: PlaceOrderResponse) => void
   externalPrice?: { price: string; side: 'BUY' | 'SELL'; key: number } | null
   feeRate: PairFeeResponse | null
+  advancedMode: boolean
 }
 
-function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrderPlaced, externalPrice, feeRate }: SideFormProps) {
+function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrderPlaced, externalPrice, feeRate, advancedMode }: SideFormProps) {
   const [type, setType] = useState<OrderType>('LIMIT')
   const [price, setPrice] = useState(pair.last_price ?? '')
+  const [triggerPrice, setTriggerPrice] = useState(pair.last_price ?? '')
   const [amount, setAmount] = useState('')
   const [maxSpend, setMaxSpend] = useState('')
   const [pct, setPct] = useState(0)
@@ -47,6 +49,7 @@ function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrder
   // ペアが切り替わったら価格・数量をリセット
   useEffect(() => {
     setPrice(pair.last_price ?? '')
+    setTriggerPrice(pair.last_price ?? '')
     setAmount('')
     setMaxSpend('')
     setPct(0)
@@ -58,6 +61,7 @@ function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrder
     if (!externalPrice || externalPrice.side !== side) return
     setType('LIMIT')
     setPrice(externalPrice.price)
+    setTriggerPrice(externalPrice.price)
     setPct(0)
     setFlashing(true)
     const t = setTimeout(() => setFlashing(false), 600)
@@ -65,6 +69,13 @@ function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrder
   }, [externalPrice?.key])
 
   const isBuy = side === 'BUY'
+  const isConditional = type === 'STOP_MARKET' || type === 'TAKE_PROFIT_MARKET'
+
+  useEffect(() => {
+    if (!advancedMode && isConditional) {
+      setType('LIMIT')
+    }
+  }, [advancedMode, isConditional])
 
   // 価格の上下ステップ（min_price 単位）
   const priceStep = parseFloat(pair.min_price) || 1
@@ -124,6 +135,7 @@ function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrder
   }
 
   const p_ = parseFloat(price)
+  const tp_ = parseFloat(triggerPrice)
   const maxInfoText = isBuy
     ? (type === 'LIMIT' && !isNaN(p_) && p_ > 0)
       ? `最大買い: ${(quoteBalance / p_).toFixed(4)} ${base}`
@@ -142,11 +154,15 @@ function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrder
         ...(type === 'LIMIT' ? { price, amount } : {}),
         ...(type === 'MARKET' && side === 'BUY' ? { max_spend: maxSpend } : {}),
         ...(type === 'MARKET' && side === 'SELL' ? { amount } : {}),
+        ...(isConditional ? { trigger_price: triggerPrice } : {}),
+        ...(isConditional && side === 'BUY' ? { max_spend: maxSpend } : {}),
+        ...(isConditional && side === 'SELL' ? { amount } : {}),
       }
       const res = await placeOrder(req)
       onOrderPlaced(res)
       setAmount('')
       setMaxSpend('')
+      setTriggerPrice(pair.last_price ?? '')
       setPct(0)
     } catch (e) {
       if (e instanceof ApiException) setError(e.code)
@@ -257,14 +273,24 @@ function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrder
 
       {/* 注文種別 */}
       <div className="order-type-tabs">
-        {(['LIMIT', 'MARKET'] as OrderType[]).map((t) => (
+        {([
+          'LIMIT',
+          'MARKET',
+          ...(advancedMode ? (['STOP_MARKET', 'TAKE_PROFIT_MARKET'] as OrderType[]) : []),
+        ] as OrderType[]).map((t) => (
           <button
             key={t}
             type="button"
             className={`type-tab${type === t ? ` active ${isBuy ? 'buy' : 'sell'}` : ''}`}
             onClick={() => { setType(t); setPct(0) }}
           >
-            {t === 'LIMIT' ? '指値' : '成り行き注文'}
+            {t === 'LIMIT'
+              ? '指値'
+              : t === 'MARKET'
+                ? '成り行き注文'
+                : t === 'STOP_MARKET'
+                  ? '逆指値成行'
+                  : '利確成行'}
           </button>
         ))}
       </div>
@@ -288,10 +314,42 @@ function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrder
         </label>
       )}
 
-      {/* 数量（LIMIT または MARKET SELL） */}
-      {(type === 'LIMIT' || (type === 'MARKET' && side === 'SELL')) && (
+      {isConditional && (
         <label className="order-field">
-          <span>{type === 'MARKET' && side === 'SELL' ? `売却総量 (${base})` : `数量 (${base})`}</span>
+          <span>トリガー価格 ({quote})<span className="price-step-hint"> 到達で成行実行</span></span>
+          <div className="order-price-input-wrap">
+            <button type="button" className="price-step-btn" onClick={(e) => {
+              const current = parseFloat(triggerPrice)
+              const base_ = isNaN(current) ? (parseFloat(pair.last_price ?? '0') || 0) : current
+              const next = Math.max(0, base_ - (parseFloat(pair.min_price) || 1) * (e.ctrlKey ? 10 : 1))
+              const decimals = (pair.min_price.split('.')[1] ?? '').length
+              setTriggerPrice(next.toFixed(decimals))
+              setPct(0)
+            }}>▼</button>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={triggerPrice}
+              onChange={(e) => { setTriggerPrice(e.target.value); setPct(0) }}
+              placeholder={pair.min_price}
+              required
+            />
+            <button type="button" className="price-step-btn" onClick={(e) => {
+              const current = parseFloat(triggerPrice)
+              const base_ = isNaN(current) ? (parseFloat(pair.last_price ?? '0') || 0) : current
+              const next = Math.max(0, base_ + (parseFloat(pair.min_price) || 1) * (e.ctrlKey ? 10 : 1))
+              const decimals = (pair.min_price.split('.')[1] ?? '').length
+              setTriggerPrice(next.toFixed(decimals))
+              setPct(0)
+            }}>▲</button>
+          </div>
+        </label>
+      )}
+
+      {/* 数量（LIMIT または MARKET SELL） */}
+      {(type === 'LIMIT' || ((type === 'MARKET' || isConditional) && side === 'SELL')) && (
+        <label className="order-field">
+          <span>{(type === 'MARKET' || isConditional) && side === 'SELL' ? `売却総量 (${base})` : `数量 (${base})`}</span>
           <div className="order-price-input-wrap">
             <button type="button" className="price-step-btn" onClick={(e) => adjustAmount(-1, e.ctrlKey ? 10 : 1)}>▼</button>
             <input
@@ -308,9 +366,9 @@ function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrder
       )}
 
       {/* 最大支払い（MARKET BUY） */}
-      {type === 'MARKET' && side === 'BUY' && (
+      {(type === 'MARKET' || isConditional) && side === 'BUY' && (
         <label className="order-field">
-          <span>最大総支払額 ({quote})</span>
+          <span>{isConditional ? `発火時の最大総支払額 (${quote})` : `最大総支払額 (${quote})`}</span>
           <div className="order-price-input-wrap">
             <button type="button" className="price-step-btn" onClick={(e) => adjustMaxSpend(-1, e.ctrlKey ? 10 : 1)}>▼</button>
             <input
@@ -411,6 +469,11 @@ function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrder
             約定までロックされます: {lockInfo.item} {lockInfo.amount}
           </span>
         )}
+        {!submitting && isConditional && !isNaN(tp_) && tp_ > 0 && (
+          <span className="order-submit-lock">
+            トリガー価格: {tp_.toFixed(4)} {quote}
+          </span>
+        )}
       </button>
     </form>
   )
@@ -418,6 +481,21 @@ function OrderSideForm({ side, pair, orderBook, base, quote, hotStorage, onOrder
 
 export default function OrderForm({ pair, orderBook, hotStorage, onOrderPlaced, externalPrice }: Props) {
   const [feeRate, setFeeRate] = useState<PairFeeResponse | null>(null)
+  const [advancedMode, setAdvancedMode] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('gekiyabafx:trade:advanced-order-mode') === '1'
+    } catch {
+      return false
+    }
+  })
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('gekiyabafx:trade:advanced-order-mode', advancedMode ? '1' : '0')
+    } catch {
+      // localStorage が無効な環境では永続化をスキップする
+    }
+  }, [advancedMode])
 
   useEffect(() => {
     if (!pair) return
@@ -434,9 +512,19 @@ export default function OrderForm({ pair, orderBook, hotStorage, onOrderPlaced, 
   const quote = pair.quote
 
   return (
-    <div className="order-form-dual">
-      <OrderSideForm side="BUY"  pair={pair} orderBook={orderBook} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} />
-      <OrderSideForm side="SELL" pair={pair} orderBook={orderBook} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} />
-    </div>
+    <>
+      <label className="order-advanced-toggle">
+        <input
+          type="checkbox"
+          checked={advancedMode}
+          onChange={(e) => setAdvancedMode(e.target.checked)}
+        />
+        <span>上級者向け設定（TP/SLを表示）</span>
+      </label>
+      <div className="order-form-dual">
+        <OrderSideForm side="BUY"  pair={pair} orderBook={orderBook} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} advancedMode={advancedMode} />
+        <OrderSideForm side="SELL" pair={pair} orderBook={orderBook} base={base} quote={quote} hotStorage={hotStorage} onOrderPlaced={onOrderPlaced} externalPrice={externalPrice} feeRate={feeRate} advancedMode={advancedMode} />
+      </div>
+    </>
   )
 }

@@ -70,12 +70,22 @@ public final class H2ExecutionRepository implements ExecutionRepository {
                 "  price   VARCHAR(32)  NOT NULL," +
                 "  amount  VARCHAR(32)  NOT NULL," +
                 "  atm_id  VARCHAR(64)," +
-                "  atm_grade VARCHAR(20)" +
+                "  atm_grade VARCHAR(20)," +
+                "  execution_id VARCHAR(64)," +
+                "  buyer_uuid VARCHAR(64)," +
+                "  seller_uuid VARCHAR(64)," +
+                "  buy_order_id VARCHAR(64)," +
+                "  sell_order_id VARCHAR(64)" +
                 ")"
             );
             try {
                 st.execute("ALTER TABLE executions ADD COLUMN IF NOT EXISTS atm_id VARCHAR(64)");
                 st.execute("ALTER TABLE executions ADD COLUMN IF NOT EXISTS atm_grade VARCHAR(20)");
+                st.execute("ALTER TABLE executions ADD COLUMN IF NOT EXISTS execution_id VARCHAR(64)");
+                st.execute("ALTER TABLE executions ADD COLUMN IF NOT EXISTS buyer_uuid VARCHAR(64)");
+                st.execute("ALTER TABLE executions ADD COLUMN IF NOT EXISTS seller_uuid VARCHAR(64)");
+                st.execute("ALTER TABLE executions ADD COLUMN IF NOT EXISTS buy_order_id VARCHAR(64)");
+                st.execute("ALTER TABLE executions ADD COLUMN IF NOT EXISTS sell_order_id VARCHAR(64)");
             } catch (SQLException ignored) {
                 // 既存DB互換用。CREATE時に定義済みなら無視する。
             }
@@ -93,7 +103,7 @@ public final class H2ExecutionRepository implements ExecutionRepository {
      */
     @Override
     public synchronized void insert(String pairId, Execution ex) {
-        String sql = "INSERT INTO executions (pair_id, ts, price, amount, atm_id, atm_grade) VALUES (?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO executions (pair_id, ts, price, amount, atm_id, atm_grade, execution_id, buyer_uuid, seller_uuid, buy_order_id, sell_order_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, pairId);
             ps.setLong(2, ex.getTimestamp());
@@ -101,6 +111,11 @@ public final class H2ExecutionRepository implements ExecutionRepository {
             ps.setString(4, ex.getAmount().setScale(4, java.math.RoundingMode.HALF_UP).toPlainString());
             ps.setString(5, ex.getAtmId());
             ps.setString(6, ex.getAtmGrade());
+            ps.setString(7, ex.getExecutionId());
+            ps.setString(8, ex.getBuyerUuid());
+            ps.setString(9, ex.getSellerUuid());
+            ps.setString(10, ex.getBuyOrderId());
+            ps.setString(11, ex.getSellOrderId());
             ps.executeUpdate();
         } catch (SQLException e) {
             logger.severe("約定履歴の INSERT に失敗しました [pair=" + pairId + "]: " + e.getMessage());
@@ -116,7 +131,7 @@ public final class H2ExecutionRepository implements ExecutionRepository {
      */
     @Override
     public synchronized List<Execution> findByPairSince(String pairId, long since) {
-        String sql = "SELECT ts, price, amount, atm_id, atm_grade FROM executions " +
+        String sql = "SELECT ts, price, amount, atm_id, atm_grade, execution_id, buyer_uuid, seller_uuid, buy_order_id, sell_order_id FROM executions " +
                      "WHERE pair_id = ? AND ts > ? ORDER BY ts ASC, id ASC";
         List<Execution> result = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -129,7 +144,12 @@ public final class H2ExecutionRepository implements ExecutionRepository {
                     BigDecimal a  = new BigDecimal(rs.getString("amount"));
                     String atmId = rs.getString("atm_id");
                     String atmGrade = rs.getString("atm_grade");
-                    result.add(new Execution(ts, p, a, atmId, atmGrade));
+                    String executionId = rs.getString("execution_id");
+                    String buyerUuid = rs.getString("buyer_uuid");
+                    String sellerUuid = rs.getString("seller_uuid");
+                    String buyOrderId = rs.getString("buy_order_id");
+                    String sellOrderId = rs.getString("sell_order_id");
+                    result.add(new Execution(ts, p, a, atmId, atmGrade, executionId, buyerUuid, sellerUuid, buyOrderId, sellOrderId));
                 }
             }
         } catch (SQLException e) {

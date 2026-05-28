@@ -506,6 +506,19 @@ code {
 .orderbook-row.ask .ob-price { color: #e05c5c; }
 .orderbook-row.bid .ob-price { color: #4caf82; }
 
+.orderbook-side-scroll {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.orderbook-row-more {
+  padding: 0.4rem 0.75rem;
+  color: var(--text);
+  opacity: 0.65;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
 .orderbook-spread {
   text-align: center;
   padding: 0.4rem;
@@ -551,6 +564,21 @@ code {
   display: flex;
   gap: 0;
   min-height: 260px;
+}
+
+.order-advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.1rem 0 0.65rem;
+  font-size: 0.76rem;
+  color: var(--text);
+  user-select: none;
+}
+
+.order-advanced-toggle input {
+  accent-color: #4caf82;
+  cursor: pointer;
 }
 
 @keyframes order-col-flash-buy {
@@ -864,6 +892,35 @@ code {
   padding: 0.75rem 1rem;
 }
 
+.trade-history-tabs {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.75rem 1rem 0;
+}
+
+.trade-history-tab {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.trade-history-tab:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.trade-history-tab.active {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .open-orders-title {
   font-size: 0.85rem;
   font-weight: 600;
@@ -899,6 +956,56 @@ code {
 
 .open-orders-table td.bid { color: #4caf82; }
 .open-orders-table td.ask { color: #e05c5c; }
+
+.execution-history {
+  padding: 0.75rem 1rem;
+}
+
+.execution-history-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.6rem;
+}
+
+.execution-history-empty {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin: 0;
+}
+
+.execution-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.execution-history-table th,
+.execution-history-table td {
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.execution-history-table th {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.execution-history-order-id {
+  font-family: var(--mono);
+  font-size: 0.73rem;
+  opacity: 0.82;
+}
+
+.execution-history-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.74rem;
+  color: var(--text);
+  opacity: 0.75;
+}
 
 .cancel-btn {
   padding: 0.2rem 0.6rem;

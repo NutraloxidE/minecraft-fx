@@ -61,6 +61,12 @@ public final class Pair {
     private List<Order> orderHistory;
 
     /**
+     * 条件注文（STOP_MARKET / TAKE_PROFIT_MARKET）。
+     * トリガー未到達の注文を保持する。
+     */
+    private List<Order> conditionalOrders;
+
+    /**
      * 生の約定履歴。ローソク足集計はフロントエンドが行う。
      * 最大保持件数は {@code config.yml} の {@code executions-max-per-pair} に従う。
      */
@@ -77,6 +83,7 @@ public final class Pair {
     public Pair() {
         this.orderBook    = new OrderBook();
         this.orderHistory = new ArrayList<>();
+        this.conditionalOrders = new ArrayList<>();
         this.executions   = new ArrayList<>();
     }
 
@@ -97,6 +104,7 @@ public final class Pair {
         this.minPrice     = minPrice;
         this.orderBook    = new OrderBook();
         this.orderHistory = new ArrayList<>();
+        this.conditionalOrders = new ArrayList<>();
         this.executions   = new ArrayList<>();
         this.lastPrice    = null;
     }
@@ -110,6 +118,12 @@ public final class Pair {
     public BigDecimal getMinPrice()       { return minPrice; }
     public OrderBook getOrderBook()       { return orderBook; }
     public List<Order> getOrderHistory()  { return orderHistory; }
+    public List<Order> getConditionalOrders() {
+        if (conditionalOrders == null) {
+            conditionalOrders = new ArrayList<>();
+        }
+        return conditionalOrders;
+    }
     public List<Execution> getExecutions(){ return executions; }
     public BigDecimal getLastPrice()      { return lastPrice; }
 
@@ -122,6 +136,7 @@ public final class Pair {
     public void setMinPrice(BigDecimal minPrice)            { this.minPrice = minPrice; }
     public void setOrderBook(OrderBook orderBook)           { this.orderBook = orderBook; }
     public void setOrderHistory(List<Order> orderHistory)   { this.orderHistory = orderHistory; }
+    public void setConditionalOrders(List<Order> conditionalOrders) { this.conditionalOrders = conditionalOrders; }
     public void setExecutions(List<Execution> executions)   { this.executions = executions; }
     public void setLastPrice(BigDecimal lastPrice)          { this.lastPrice = lastPrice; }
 

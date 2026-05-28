@@ -12,6 +12,7 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Price-Time Priority マッチングエンジン。
@@ -79,9 +80,9 @@ public final class MatchingEngine {
             PluginConfig config
     ) throws InsufficientBalanceException {
         return placeOrder(pairId, pair, incoming, data, config, null, null);
-        }
+    }
 
-        public static MatchResult placeOrder(
+    public static MatchResult placeOrder(
             String pairId,
             Pair pair,
             Order incoming,
@@ -89,13 +90,77 @@ public final class MatchingEngine {
             PluginConfig config,
             String atmId,
             String atmGrade
-        ) throws InsufficientBalanceException {
+    ) throws InsufficientBalanceException {
+        incoming.setAtmId(atmId);
+        incoming.setAtmGrade(atmGrade);
+        return placeOrderInternal(pairId, pair, incoming, data, config, false, true);
+    }
 
-            incoming.setAtmId(atmId);
-            incoming.setAtmGrade(atmGrade);
-
-        // ① 残高をロックする
+    public static void placeConditionalOrder(
+            String pairId,
+            Pair pair,
+            Order incoming,
+            StorageData data,
+            PluginConfig config
+    ) throws InsufficientBalanceException {
         lockBalance(pairId, pair, incoming, data);
+        incoming.setStatus(OrderStatus.OPEN);
+        incoming.setClosedAt(0L);
+        pair.getConditionalOrders().add(incoming);
+    }
+
+    public static void cancelConditionalOrder(
+            String pairId,
+            Pair pair,
+            Order order,
+            StorageData data,
+            PluginConfig config
+    ) {
+        if (order.getStatus() == OrderStatus.CANCELLED
+                || order.getStatus() == OrderStatus.FILLED) {
+            return;
+        }
+
+        PlayerData pd = data.getPlayers().get(order.getUuid());
+        if (pd == null) return;
+
+        if (isMarketLike(order.getType())) {
+            if (order.getSide() == OrderSide.BUY) {
+                returnLock(pairId, pair.getQuote(),
+                        order.getMaxSpend().setScale(4, RoundingMode.HALF_UP), pd);
+            } else {
+                returnLock(pairId, pair.getBase(),
+                        order.getRemainingAmount().setScale(4, RoundingMode.HALF_UP), pd);
+            }
+        } else if (order.getSide() == OrderSide.BUY) {
+            BigDecimal refund = order.getPrice()
+                    .multiply(order.getRemainingAmount())
+                    .setScale(4, RoundingMode.HALF_UP);
+            returnLock(pairId, pair.getQuote(), refund, pd);
+        } else {
+            returnLock(pairId, pair.getBase(), order.getRemainingAmount(), pd);
+        }
+
+        long now = Instant.now().getEpochSecond();
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setClosedAt(now);
+        addToHistory(pair, order, config);
+    }
+
+    private static MatchResult placeOrderInternal(
+            String pairId,
+            Pair pair,
+            Order incoming,
+            StorageData data,
+            PluginConfig config,
+            boolean skipLock,
+            boolean evaluateConditionalTriggers
+    ) throws InsufficientBalanceException {
+
+        if (!skipLock) {
+            // ① 残高をロックする
+            lockBalance(pairId, pair, incoming, data);
+        }
 
         // ② マッチングを実行する
         List<Execution> newExecs = new ArrayList<>();
@@ -110,7 +175,7 @@ public final class MatchingEngine {
         long now = Instant.now().getEpochSecond();
 
         // ③ 約定後の残量を処理する
-        if (incoming.getType() == OrderType.MARKET) {
+        if (isMarketLike(incoming.getType())) {
             // 成行：未消費ロックを返還して即時クローズ
             refundMarketLock(pairId, pair, incoming, data, spentQuote);
             incoming.setStatus(newExecs.isEmpty() ? OrderStatus.CANCELLED : OrderStatus.FILLED);
@@ -142,9 +207,62 @@ public final class MatchingEngine {
         // ④ lastPrice を更新する（約定履歴は H2ExecutionRepository に委譲）
         if (!newExecs.isEmpty()) {
             pair.setLastPrice(newExecs.get(newExecs.size() - 1).getPrice());
+            if (evaluateConditionalTriggers) {
+                triggerConditionalOrders(pairId, pair, data, config);
+            }
         }
 
         return new MatchResult(newExecs);
+    }
+
+    private static void triggerConditionalOrders(
+            String pairId,
+            Pair pair,
+            StorageData data,
+            PluginConfig config
+    ) {
+        BigDecimal lastPrice = pair.getLastPrice();
+        if (lastPrice == null) return;
+        if (pair.getConditionalOrders() == null || pair.getConditionalOrders().isEmpty()) return;
+
+        List<Order> triggered = new ArrayList<>();
+        Iterator<Order> it = pair.getConditionalOrders().iterator();
+        while (it.hasNext()) {
+            Order o = it.next();
+            if (o.getTriggerPrice() == null) continue;
+
+            boolean shouldTrigger = false;
+            if (o.getType() == OrderType.STOP_MARKET) {
+                shouldTrigger = (o.getSide() == OrderSide.BUY)
+                        ? lastPrice.compareTo(o.getTriggerPrice()) >= 0
+                        : lastPrice.compareTo(o.getTriggerPrice()) <= 0;
+            } else if (o.getType() == OrderType.TAKE_PROFIT_MARKET) {
+                shouldTrigger = (o.getSide() == OrderSide.BUY)
+                        ? lastPrice.compareTo(o.getTriggerPrice()) <= 0
+                        : lastPrice.compareTo(o.getTriggerPrice()) >= 0;
+            }
+
+            if (shouldTrigger) {
+                it.remove();
+                triggered.add(o);
+            }
+        }
+
+        for (Order o : triggered) {
+            try {
+                placeOrderInternal(pairId, pair, o, data, config, true, false);
+            } catch (InsufficientBalanceException e) {
+                o.setStatus(OrderStatus.CANCELLED);
+                o.setClosedAt(Instant.now().getEpochSecond());
+                addToHistory(pair, o, config);
+            }
+        }
+    }
+
+    private static boolean isMarketLike(OrderType type) {
+        return type == OrderType.MARKET
+                || type == OrderType.STOP_MARKET
+                || type == OrderType.TAKE_PROFIT_MARKET;
     }
 
     /**
@@ -228,7 +346,7 @@ public final class MatchingEngine {
 
         if (order.getSide() == OrderSide.BUY) {
             lockItem = quote;
-            lockAmount = (order.getType() == OrderType.MARKET)
+            lockAmount = isMarketLike(order.getType())
                     ? order.getMaxSpend().setScale(4, RoundingMode.HALF_UP)
                     : order.getPrice().multiply(order.getAmount()).setScale(4, RoundingMode.HALF_UP);
         } else {
@@ -286,7 +404,7 @@ public final class MatchingEngine {
             BigDecimal askRemain = ask.getRemainingAmount();
             BigDecimal execAmount;
 
-            if (buy.getType() == OrderType.MARKET) {
+                if (isMarketLike(buy.getType())) {
                 BigDecimal remainSpend = buy.getMaxSpend()
                         .subtract(spentQuote)
                         .setScale(4, RoundingMode.HALF_UP);
@@ -309,7 +427,18 @@ public final class MatchingEngine {
             settle(pairId, pair, buy, ask, execPrice, execAmount, data, config, true);
             spentQuote = spentQuote.add(
                     execPrice.multiply(execAmount).setScale(4, RoundingMode.HALF_UP));
-                execs.add(new Execution(now, execPrice, execAmount, buy.getAtmId(), buy.getAtmGrade()));
+                execs.add(new Execution(
+                    now,
+                    execPrice,
+                    execAmount,
+                    buy.getAtmId(),
+                    buy.getAtmGrade(),
+                    UUID.randomUUID().toString(),
+                    buy.getUuid(),
+                    ask.getUuid(),
+                    buy.getOrderId(),
+                    ask.getOrderId()
+                ));
 
             // ask が全量約定したら板から除去
             if (ask.getRemainingAmount().compareTo(BigDecimal.ZERO) == 0) {
@@ -323,7 +452,7 @@ public final class MatchingEngine {
 
             // buy 残量チェック（MARKET: 残 spend、LIMIT: 残 amount）
             boolean buyExhausted;
-            if (buy.getType() == OrderType.MARKET) {
+            if (isMarketLike(buy.getType())) {
                 BigDecimal remainSpend = buy.getMaxSpend().subtract(spentQuote)
                         .setScale(4, RoundingMode.HALF_UP);
                 buyExhausted = remainSpend.compareTo(BigDecimal.ZERO) <= 0;
@@ -368,7 +497,18 @@ public final class MatchingEngine {
             if (execAmount.compareTo(BigDecimal.ZERO) <= 0) break;
 
             settle(pairId, pair, bid, sell, execPrice, execAmount, data, config, false);
-            execs.add(new Execution(now, execPrice, execAmount, sell.getAtmId(), sell.getAtmGrade()));
+                execs.add(new Execution(
+                    now,
+                    execPrice,
+                    execAmount,
+                    sell.getAtmId(),
+                    sell.getAtmGrade(),
+                    UUID.randomUUID().toString(),
+                    bid.getUuid(),
+                    sell.getUuid(),
+                    bid.getOrderId(),
+                    sell.getOrderId()
+                ));
 
             // bid が全量約定したら板から除去
             if (bid.getRemainingAmount().compareTo(BigDecimal.ZERO) == 0) {

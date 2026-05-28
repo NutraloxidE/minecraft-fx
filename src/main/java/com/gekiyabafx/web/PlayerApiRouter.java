@@ -173,6 +173,7 @@ public final class PlayerApiRouter {
                 if (book == null) return;
                 List<Order> all = new ArrayList<>(book.getBids());
                 all.addAll(book.getAsks());
+                all.addAll(pair.getConditionalOrders());
                 for (Order o : all) {
                     if (playerUuid.equals(o.getUuid())) {
                         openOrders.add(orderToMap(pairId, o));
@@ -271,6 +272,9 @@ public final class PlayerApiRouter {
         BigDecimal price     = parseBigDecimal(body, "price");
         BigDecimal amount    = parseBigDecimal(body, "amount");
         BigDecimal maxSpend  = parseBigDecimal(body, "max_spend");
+        BigDecimal triggerPrice = parseBigDecimal(body, "trigger_price");
+
+        boolean conditional = (type == OrderType.STOP_MARKET || type == OrderType.TAKE_PROFIT_MARKET);
 
         if (type == OrderType.LIMIT && (price == null || amount == null)) {
             ctx.status(400).json(Map.of("error", "limit_order_requires_price_and_amount"));
@@ -284,6 +288,18 @@ public final class PlayerApiRouter {
             ctx.status(400).json(Map.of("error", "market_buy_requires_max_spend"));
             return;
         }
+        if (conditional && triggerPrice == null) {
+            ctx.status(400).json(Map.of("error", "conditional_order_requires_trigger_price"));
+            return;
+        }
+        if (conditional && side == OrderSide.SELL && amount == null) {
+            ctx.status(400).json(Map.of("error", "conditional_sell_requires_amount"));
+            return;
+        }
+        if (conditional && side == OrderSide.BUY && maxSpend == null) {
+            ctx.status(400).json(Map.of("error", "conditional_buy_requires_max_spend"));
+            return;
+        }
 
         // ── 注文オブジェクト生成 ──────────────────────────────────────────────
         Order incoming = new Order();
@@ -295,6 +311,7 @@ public final class PlayerApiRouter {
         incoming.setAmount(amount != null ? amount : BigDecimal.ZERO);
         incoming.setFilled(BigDecimal.ZERO);
         incoming.setMaxSpend(maxSpend);
+        incoming.setTriggerPrice(triggerPrice);
         incoming.setStatus(OrderStatus.OPEN);
         incoming.setCreatedAt(System.currentTimeMillis() / 1000L);
 
@@ -312,18 +329,27 @@ public final class PlayerApiRouter {
 
             MatchResult result;
             try {
-                if (atmState.isActive()) {
-                    result = MatchingEngine.placeOrder(
-                            pairId,
-                            pair,
-                            incoming,
-                            data,
-                            config,
-                            atmState.getAtmId(),
-                            atmState.getGrade()
-                    );
+                if (conditional) {
+                    if (atmState.isActive()) {
+                        incoming.setAtmId(atmState.getAtmId());
+                        incoming.setAtmGrade(atmState.getGrade());
+                    }
+                    MatchingEngine.placeConditionalOrder(pairId, pair, incoming, data, config);
+                    result = new MatchResult(List.of());
                 } else {
-                    result = MatchingEngine.placeOrder(pairId, pair, incoming, data, config, null, null);
+                    if (atmState.isActive()) {
+                        result = MatchingEngine.placeOrder(
+                                pairId,
+                                pair,
+                                incoming,
+                                data,
+                                config,
+                                atmState.getAtmId(),
+                                atmState.getGrade()
+                        );
+                    } else {
+                        result = MatchingEngine.placeOrder(pairId, pair, incoming, data, config, null, null);
+                    }
                 }
             } catch (InsufficientBalanceException e) {
                 ctx.status(400).json(Map.of("error", "insufficient_balance", "detail", e.getMessage()));
@@ -339,9 +365,15 @@ public final class PlayerApiRouter {
             List<Map<String, Object>> execList = new ArrayList<>();
             for (Execution ex : result.getExecutions()) {
                 Map<String, Object> em = new LinkedHashMap<>();
+                em.put("execution_id", ex.getExecutionId());
                 em.put("price",      ex.getPrice().toPlainString());
                 em.put("amount",     ex.getAmount().toPlainString());
+                em.put("timestamp",  ex.getTimestamp());
                 em.put("created_at", ex.getTimestamp());
+                em.put("buyer_uuid", ex.getBuyerUuid());
+                em.put("seller_uuid", ex.getSellerUuid());
+                em.put("buy_order_id", ex.getBuyOrderId());
+                em.put("sell_order_id", ex.getSellOrderId());
                 em.put("atm_id",     ex.getAtmId());
                 em.put("atm_grade",  ex.getAtmGrade());
                 execList.add(em);
@@ -385,10 +417,16 @@ public final class PlayerApiRouter {
             // 全ペアの板から対象注文を探す
             for (Map.Entry<String, Pair> e : data.getPairs().entrySet()) {
                 String    pairId = e.getKey();
-                OrderBook book   = e.getValue().getOrderBook();
+                Pair pair = e.getValue();
+                OrderBook book   = pair.getOrderBook();
                 if (book == null) continue;
 
                 Order found = findInBook(book, orderId);
+                boolean isConditionalOrder = false;
+                if (found == null) {
+                    found = findInConditional(pair, orderId);
+                    isConditionalOrder = found != null;
+                }
                 if (found == null) continue;
 
                 // 所有者チェック
@@ -397,12 +435,15 @@ public final class PlayerApiRouter {
                     return;
                 }
 
-                // 板から除去（残したままだとマッチングループで拾われ続ける）
-                book.getBids().remove(found);
-                book.getAsks().remove(found);
-
-                Pair pair = data.getPairs().get(pairId);
-                MatchingEngine.cancelOrder(pairId, pair, found, data, config);
+                if (isConditionalOrder) {
+                    pair.getConditionalOrders().remove(found);
+                    MatchingEngine.cancelConditionalOrder(pairId, pair, found, data, config);
+                } else {
+                    // 板から除去（残したままだとマッチングループで拾われ続ける）
+                    book.getBids().remove(found);
+                    book.getAsks().remove(found);
+                    MatchingEngine.cancelOrder(pairId, pair, found, data, config);
+                }
                 sm.markDirty();
 
                 ctx.json(Map.of("cancelled", true));
@@ -568,6 +609,13 @@ public final class PlayerApiRouter {
         return null;
     }
 
+    private static Order findInConditional(Pair pair, String orderId) {
+        for (Order o : pair.getConditionalOrders()) {
+            if (orderId.equals(o.getOrderId())) return o;
+        }
+        return null;
+    }
+
     /** {@code Order} → レスポンス用 {@code Map} 変換。 */
     private static Map<String, Object> orderToMap(String pairId, Order o) {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -578,6 +626,7 @@ public final class PlayerApiRouter {
         m.put("price",      o.getPrice() != null ? o.getPrice().toPlainString() : null);
         m.put("amount",     o.getAmount().toPlainString());
         m.put("filled",     o.getFilled().toPlainString());
+        m.put("trigger_price", o.getTriggerPrice() != null ? o.getTriggerPrice().toPlainString() : null);
         m.put("status",     o.getStatus().name());
         m.put("created_at", o.getCreatedAt());
         return m;

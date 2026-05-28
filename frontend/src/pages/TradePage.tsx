@@ -18,6 +18,7 @@ import PairSelector from '@/components/PairSelector'
 import OrderBookView from '@/components/OrderBookView'
 import OrderForm from '@/components/OrderForm'
 import OpenOrders from '@/components/OpenOrders'
+import ExecutionHistory from '@/components/ExecutionHistory'
 import CandleChart from '@/components/CandleChart'
 import DepositPanel from '@/components/DepositPanel'
 import type { PairSummary, PlaceOrderResponse } from '@/types/api'
@@ -28,8 +29,25 @@ export default function TradePage() {
   const { authState, playerState, error, logout, refresh } = usePlayerAuth()
   const [pairs, setPairs] = useState<PairSummary[]>([])
   const [selectedPairId, setSelectedPairId] = useState<string | null>(null)
+  const [historyTab, setHistoryTab] = useState<'open_orders' | 'executions'>(() => {
+    try {
+      return window.localStorage.getItem('gekiyabafx:trade:history-tab') === 'executions'
+        ? 'executions'
+        : 'open_orders'
+    } catch {
+      return 'open_orders'
+    }
+  })
   const { orderBook } = useMarketData(selectedPairId)
   const [externalPrice, setExternalPrice] = useState<{ price: string; side: 'BUY' | 'SELL'; key: number } | null>(null)
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('gekiyabafx:trade:history-tab', historyTab)
+    } catch {
+      // localStorage が無効な環境では永続化をスキップ
+    }
+  }, [historyTab])
 
   // ペア一覧を取得する
   useEffect(() => {
@@ -153,9 +171,34 @@ export default function TradePage() {
         </section>
       </main>
 
-      {/* 保有注文 */}
+      {/* 保有注文 / 約定履歴 */}
       <section className="trade-section">
-        <OpenOrders orders={openOrders} onCancelled={handleCancelled} />
+        <div className="trade-history-tabs" role="tablist" aria-label="履歴タブ">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={historyTab === 'open_orders'}
+            className={`trade-history-tab${historyTab === 'open_orders' ? ' active' : ''}`}
+            onClick={() => setHistoryTab('open_orders')}
+          >
+            保有注文
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={historyTab === 'executions'}
+            className={`trade-history-tab${historyTab === 'executions' ? ' active' : ''}`}
+            onClick={() => setHistoryTab('executions')}
+          >
+            約定履歴
+          </button>
+        </div>
+
+        {historyTab === 'open_orders' ? (
+          <OpenOrders orders={openOrders} onCancelled={handleCancelled} />
+        ) : (
+          <ExecutionHistory pairId={selectedPairId} playerUuid={playerState?.uuid ?? null} />
+        )}
       </section>
     </div>
   )

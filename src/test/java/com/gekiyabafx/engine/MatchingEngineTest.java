@@ -319,6 +319,42 @@ class MatchingEngineTest {
         assertEquals(bd("0.0000"), pd.getLockedBalance(PAIR_ID, QUOTE));
     }
 
+    @Test
+    @DisplayName("STOP_MARKET SELL はトリガー到達後に成行実行される")
+    void stopMarketSell_triggersAndExecutes() throws Exception {
+        String bidMaker = newPlayer("bidMaker", BASE, "0.0000", QUOTE, "20.0000");
+        String triggerSeller = newPlayer("triggerSeller", BASE, "2.0000", QUOTE, "0.0000");
+        String firstSeller = newPlayer("firstSeller", BASE, "1.0000", QUOTE, "0.0000");
+
+        // 価格 3.0 の買い板を 2.0 積む
+        Order bid = limitOrder(bidMaker, OrderSide.BUY, "3.0000", "2.0000");
+        MatchingEngine.placeOrder(PAIR_ID, pair, bid, data, config);
+
+        // 逆指値成行 SELL（lastPrice <= 4.0 で発火）
+        Order stopSell = new Order(
+                UUID.randomUUID().toString(), triggerSeller,
+                OrderType.STOP_MARKET, OrderSide.SELL,
+                null,
+                new BigDecimal("1.0000"),
+                null,
+                Instant.now().getEpochSecond()
+        );
+        stopSell.setTriggerPrice(new BigDecimal("4.0000"));
+        MatchingEngine.placeConditionalOrder(PAIR_ID, pair, stopSell, data, config);
+
+        // 別の SELL 成行で lastPrice=3.0 を作る → STOP が発火する
+        Order marketSell = marketSellOrder(firstSeller, "1.0000");
+        MatchingEngine.placeOrder(PAIR_ID, pair, marketSell, data, config);
+
+        assertTrue(pair.getConditionalOrders().isEmpty());
+        assertEquals(OrderStatus.FILLED, stopSell.getStatus());
+
+        PlayerData triggerPd = data.getPlayers().get(triggerSeller);
+        assertEquals(bd("1.0000"), triggerPd.getHotBalance(BASE));
+        assertEquals(bd("3.0000"), triggerPd.getHotBalance(QUOTE));
+        assertEquals(bd("0.0000"), triggerPd.getLockedBalance(PAIR_ID, BASE));
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     //  ヘルパーメソッド
     // ─────────────────────────────────────────────────────────────────────────

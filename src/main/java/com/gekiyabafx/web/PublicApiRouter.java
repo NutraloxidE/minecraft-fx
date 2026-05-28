@@ -347,8 +347,18 @@ public final class PublicApiRouter {
         List<Execution> execs = executionRepo.findByPairSince(pairId, sinceF);
 
         List<Map<String, Object>> execSnap = new ArrayList<>(execs.size());
+        int legacySequence = 0;
         for (Execution ex : execs) {
             Map<String, Object> m = new LinkedHashMap<>();
+            String executionId = ex.getExecutionId();
+            if (executionId == null || executionId.isBlank()) {
+                executionId = "legacy-" + ex.getTimestamp() + "-" + (legacySequence++);
+            }
+            m.put("execution_id", executionId);
+            m.put("buyer_uuid", ex.getBuyerUuid());
+            m.put("seller_uuid", ex.getSellerUuid());
+            m.put("buy_order_id", ex.getBuyOrderId());
+            m.put("sell_order_id", ex.getSellOrderId());
             m.put("timestamp", ex.getTimestamp());
             m.put("price",     bdStr(ex.getPrice()));
             m.put("amount",    bdStr(ex.getAmount()));
@@ -388,6 +398,9 @@ public final class PublicApiRouter {
             m.put("amount",     bdStr(o.getAmount()));
             if (o.getMaxSpend() != null) {
                 m.put("max_spend", bdStr(o.getMaxSpend()));
+            }
+            if (o.getTriggerPrice() != null) {
+                m.put("trigger_price", bdStr(o.getTriggerPrice()));
             }
             m.put("filled",     bdStr(o.getFilled()));
             m.put("status",     o.getStatus().name());

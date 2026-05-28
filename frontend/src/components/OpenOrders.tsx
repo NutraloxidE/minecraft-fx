@@ -46,6 +46,7 @@ export default function OpenOrders({ orders, onCancelled }: Props) {
               <th>種別</th>
               <th>売買</th>
               <th>価格</th>
+              <th>トリガー</th>
               <th>数量</th>
               <th>約定済</th>
               <th>状態</th>
@@ -56,11 +57,20 @@ export default function OpenOrders({ orders, onCancelled }: Props) {
             {orders.map((o) => (
               <tr key={o.order_id}>
                 <td>{o.pair_id}</td>
-                <td>{o.type === 'LIMIT' ? '指値' : '成行'}</td>
+                <td>
+                  {o.type === 'LIMIT'
+                    ? '指値'
+                    : o.type === 'MARKET'
+                      ? '成行'
+                      : o.type === 'STOP_MARKET'
+                        ? '逆指値成行'
+                        : '利確成行'}
+                </td>
                 <td className={o.side === 'BUY' ? 'bid' : 'ask'}>
                   {o.side === 'BUY' ? '買' : '売'}
                 </td>
                 <td>{o.price ?? '—'}</td>
+                <td>{o.trigger_price ?? '—'}</td>
                 <td>{o.amount}</td>
                 <td>{o.filled}</td>
                 <td>{o.status}</td>

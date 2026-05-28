@@ -73,6 +73,12 @@ public final class Order {
     private OrderStatus status;
 
     /**
+     * 条件注文のトリガー価格。
+     * STOP_MARKET / TAKE_PROFIT_MARKET の場合のみ有効。
+     */
+    private BigDecimal triggerPrice;
+
+    /**
      * 発注日時のUnixタイムスタンプ（秒）。
      * GSON シリアライズ時のフィールド名: {@code created_at}
      */
@@ -140,6 +146,7 @@ public final class Order {
     public BigDecimal getMaxSpend()   { return maxSpend; }
     public BigDecimal getFilled()     { return filled; }
     public OrderStatus getStatus()    { return status; }
+    public BigDecimal getTriggerPrice(){ return triggerPrice; }
     public long getCreatedAt()        { return createdAt; }
     public long getClosedAt()         { return closedAt; }
     public String getAtmId()          { return atmId; }
@@ -156,6 +163,7 @@ public final class Order {
     public void setMaxSpend(BigDecimal maxSpend)  { this.maxSpend = maxSpend; }
     public void setFilled(BigDecimal filled)      { this.filled = filled; }
     public void setStatus(OrderStatus status)     { this.status = status; }
+    public void setTriggerPrice(BigDecimal triggerPrice) { this.triggerPrice = triggerPrice; }
     public void setCreatedAt(long createdAt)      { this.createdAt = createdAt; }
     public void setClosedAt(long closedAt)        { this.closedAt = closedAt; }
     public void setAtmId(String atmId)            { this.atmId = atmId; }
@@ -183,6 +191,7 @@ public final class Order {
                 + ", amount=" + amount
                 + ", filled=" + filled
                 + ", status=" + status
+                + ", triggerPrice=" + triggerPrice
                 + ", createdAt=" + createdAt
                 + '}';
     }
