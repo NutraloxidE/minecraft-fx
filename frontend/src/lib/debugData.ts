@@ -252,6 +252,7 @@ export const DEBUG_MARKET_MAKER_STATUS: MarketMakerStatusResponse = {
   running: true,
   service_account: 'svc:gekiyaba_mm',
   current_loop_interval_ticks: 20,
+  current_volume_usage_pct: '1.0',
   tracked_pairs: 2,
   passive_pairs: 2,
   squeezing_pairs: 0,

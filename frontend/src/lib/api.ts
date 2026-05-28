@@ -371,6 +371,7 @@ export interface MarketMakerStatusResponse {
   running: boolean
   service_account: string
   current_loop_interval_ticks: number
+  current_volume_usage_pct: string
   tracked_pairs: number
   passive_pairs: number
   squeezing_pairs: number
@@ -390,6 +391,7 @@ export interface MarketMakerLogRecord {
 export interface MarketMakerToggleRequest {
   enabled?: boolean
   loop_interval_ticks?: number
+  volume_usage_pct?: string
   service_account?: string
 }
 
@@ -397,6 +399,7 @@ export interface MarketMakerToggleResponse {
   enabled: boolean
   service_account: string
   current_loop_interval_ticks: number
+  current_volume_usage_pct: string
   timestamp: string
 }
 

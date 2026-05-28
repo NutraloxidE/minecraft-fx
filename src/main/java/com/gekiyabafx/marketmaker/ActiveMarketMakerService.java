@@ -61,6 +61,7 @@ public final class ActiveMarketMakerService {
 
     private static final int MAX_RECENT_LOGS = 30;
     private static final int DEFAULT_LOOP_INTERVAL_TICKS = 20;
+    private static final BigDecimal DEFAULT_VOLUME_USAGE_PCT = new BigDecimal("1.0");
 
     private final GekiyabaFXPlugin plugin;
     private final ExecutionRepository executionRepo;
@@ -69,6 +70,7 @@ public final class ActiveMarketMakerService {
     private final Deque<LogEntry> recentLogs = new LinkedList<>();
 
     private volatile int loopIntervalTicks = DEFAULT_LOOP_INTERVAL_TICKS;
+    private volatile BigDecimal volumeUsagePct = DEFAULT_VOLUME_USAGE_PCT;
     private volatile BukkitTask task;
 
     public ActiveMarketMakerService(GekiyabaFXPlugin plugin, ExecutionRepository executionRepo) {
@@ -103,6 +105,13 @@ public final class ActiveMarketMakerService {
         loopIntervalTicks = ticks;
     }
 
+    public synchronized void setVolumeUsagePct(BigDecimal pct) {
+        if (pct == null || pct.compareTo(BigDecimal.ZERO) < 0 || pct.compareTo(HUNDRED) > 0) {
+            throw new IllegalArgumentException("volumeUsagePct must be between 0 and 100");
+        }
+        volumeUsagePct = pct.setScale(4, RoundingMode.HALF_UP);
+    }
+
     public synchronized void setServiceAccountId(String serviceAccountId) {
         if (serviceAccountId == null || serviceAccountId.isBlank()) {
             throw new IllegalArgumentException("serviceAccountId must not be blank");
@@ -122,6 +131,10 @@ public final class ActiveMarketMakerService {
         return loopIntervalTicks;
     }
 
+    public BigDecimal getVolumeUsagePct() {
+        return volumeUsagePct;
+    }
+
     public boolean isRunning() {
         return task != null;
     }
@@ -131,6 +144,7 @@ public final class ActiveMarketMakerService {
         snapshot.put("running", isRunning());
         snapshot.put("service_account", getServiceAccountId());
         snapshot.put("current_loop_interval_ticks", loopIntervalTicks);
+        snapshot.put("current_volume_usage_pct", getVolumeUsagePct().toPlainString());
 
         int trackedPairs = 0;
         int passive = 0;
@@ -588,7 +602,10 @@ public final class ActiveMarketMakerService {
             }
         }
 
-        BigDecimal target = vol24h.multiply(new BigDecimal("0.01")).setScale(4, RoundingMode.HALF_UP);
+        BigDecimal target = vol24h
+            .multiply(getVolumeUsagePct())
+            .divide(HUNDRED, 4, RoundingMode.HALF_UP)
+            .setScale(4, RoundingMode.HALF_UP);
         if (target.compareTo(pair.getMinAmount()) < 0) {
             target = pair.getMinAmount().setScale(4, RoundingMode.HALF_UP);
         }

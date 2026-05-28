@@ -1235,6 +1235,17 @@ public final class AdminApiRouter {
             }
         }
 
+        BigDecimal volumeUsagePct = null;
+        if (body.containsKey("volume_usage_pct")) {
+            volumeUsagePct = parseStrictBigDecimal(body.get("volume_usage_pct"));
+            if (volumeUsagePct == null
+                    || volumeUsagePct.compareTo(BigDecimal.ZERO) < 0
+                    || volumeUsagePct.compareTo(new BigDecimal("100")) > 0) {
+                ctx.status(400).json(Map.of("error", "invalid_volume_usage_pct"));
+                return;
+            }
+        }
+
         String serviceAccount = getString(body, "service_account");
         if (serviceAccount != null && !serviceAccount.isBlank()) {
             if (!serviceAccount.startsWith("svc:")) {
@@ -1248,7 +1259,7 @@ public final class AdminApiRouter {
             }
         }
 
-        if (enabled == null && loopIntervalTicks == null && serviceAccount == null) {
+        if (enabled == null && loopIntervalTicks == null && volumeUsagePct == null && serviceAccount == null) {
             ctx.status(400).json(Map.of("error", "missing_enabled"));
             return;
         }
@@ -1261,6 +1272,15 @@ public final class AdminApiRouter {
                 needsRestart = true;
             } catch (IllegalArgumentException e) {
                 ctx.status(400).json(Map.of("error", "invalid_loop_interval_ticks"));
+                return;
+            }
+        }
+
+        if (volumeUsagePct != null) {
+            try {
+                activeMarketMakerService.setVolumeUsagePct(volumeUsagePct);
+            } catch (IllegalArgumentException e) {
+                ctx.status(400).json(Map.of("error", "invalid_volume_usage_pct"));
                 return;
             }
         }
@@ -1296,6 +1316,7 @@ public final class AdminApiRouter {
                 "enabled", activeMarketMakerService.isRunning(),
                 "service_account", activeMarketMakerService.getServiceAccountId(),
                 "current_loop_interval_ticks", activeMarketMakerService.getLoopIntervalTicks(),
+            "current_volume_usage_pct", activeMarketMakerService.getVolumeUsagePct().toPlainString(),
                 "timestamp", java.time.Instant.now().toString()
         ));
     }

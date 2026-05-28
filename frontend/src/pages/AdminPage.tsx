@@ -1091,6 +1091,7 @@ function MarketMakerControlPanel({ isDebug }: { isDebug: boolean }) {
   const [accounts, setAccounts] = useState<ServiceAccount[]>([])
   const [selectedAccount, setSelectedAccount] = useState('svc:gekiyaba_mm')
   const [intervalSeconds, setIntervalSeconds] = useState('1')
+  const [volumeUsagePct, setVolumeUsagePct] = useState('1.0')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
@@ -1105,6 +1106,7 @@ function MarketMakerControlPanel({ isDebug }: { isDebug: boolean }) {
         setAccounts(DEBUG_SERVICE_ACCOUNTS)
         setSelectedAccount(DEBUG_MARKET_MAKER_STATUS.service_account)
         setIntervalSeconds(String(Math.max(1, Math.round(DEBUG_MARKET_MAKER_STATUS.current_loop_interval_ticks / 20))))
+        setVolumeUsagePct(DEBUG_MARKET_MAKER_STATUS.current_volume_usage_pct)
         return
       }
       const [next, svcAccounts] = await Promise.all([
@@ -1115,6 +1117,7 @@ function MarketMakerControlPanel({ isDebug }: { isDebug: boolean }) {
       setAccounts(svcAccounts)
       setSelectedAccount(next.service_account)
       setIntervalSeconds(String(Math.max(1, Math.round(next.current_loop_interval_ticks / 20))))
+      setVolumeUsagePct(next.current_volume_usage_pct)
     } catch (e: unknown) {
       const apiErr = e as { message?: string }
       setErr(apiErr.message ?? 'アクティブMMステータスの取得に失敗しました')
@@ -1182,7 +1185,7 @@ function MarketMakerControlPanel({ isDebug }: { isDebug: boolean }) {
     }
   }
 
-  const handleApplyInterval = async () => {
+  const handleApplyConfig = async () => {
     if (!status) return
 
     const seconds = Number(intervalSeconds)
@@ -1191,26 +1194,38 @@ function MarketMakerControlPanel({ isDebug }: { isDebug: boolean }) {
       return
     }
 
+    const usagePct = Number(volumeUsagePct)
+    if (!Number.isFinite(usagePct) || usagePct < 0 || usagePct > 100) {
+      setMsg({ text: 'AMMの出来高使用率(%)は0以上100以下で入力してください', ok: false })
+      return
+    }
+
     if (isDebug) {
       setStatus({
         ...status,
         current_loop_interval_ticks: seconds * 20,
+        current_volume_usage_pct: String(usagePct),
         timestamp: new Date().toISOString(),
       })
-      setMsg({ text: `[DEBUG] AMMの実行間隔を ${seconds} 秒にしました`, ok: true })
+      setMsg({ text: `[DEBUG] AMM設定を反映しました（間隔 ${seconds} 秒 / 出来高使用率 ${usagePct}%）`, ok: true })
       return
     }
 
     setSaving(true)
     setMsg(null)
     try {
-      await adminToggleMarketMaker({ loop_interval_ticks: seconds * 20, service_account: selectedAccount })
+      await adminToggleMarketMaker({
+        loop_interval_ticks: seconds * 20,
+        volume_usage_pct: String(usagePct),
+        service_account: selectedAccount,
+      })
       setIntervalSeconds(String(seconds))
-      setMsg({ text: `AMMの実行間隔を ${seconds} 秒にしました`, ok: true })
+      setVolumeUsagePct(String(usagePct))
+      setMsg({ text: `AMM設定を反映しました（間隔 ${seconds} 秒 / 出来高使用率 ${usagePct}%）`, ok: true })
       await load()
     } catch (e: unknown) {
       const apiErr = e as { message?: string }
-      setMsg({ text: apiErr.message ?? 'AMMの実行間隔更新に失敗しました', ok: false })
+      setMsg({ text: apiErr.message ?? 'AMM設定の更新に失敗しました', ok: false })
     } finally {
       setSaving(false)
     }
@@ -1233,6 +1248,7 @@ function MarketMakerControlPanel({ isDebug }: { isDebug: boolean }) {
         </span>
         <span className="arb-meta">実行口座: {status.service_account}</span>
         <span className="arb-meta">実行間隔: {Math.max(1, Math.round(status.current_loop_interval_ticks / 20))}秒</span>
+        <span className="arb-meta">出来高使用率: {status.current_volume_usage_pct}%</span>
         <span className="arb-meta">監視ペア: {status.tracked_pairs}</span>
         <span className="arb-meta">状態: PASSIVE {status.passive_pairs} / SQUEEZING {status.squeezing_pairs} / MATCHING {status.matching_pairs}</span>
         <span className="arb-meta">自前注文: {status.owned_orders}</span>
@@ -1270,7 +1286,19 @@ function MarketMakerControlPanel({ isDebug }: { isDebug: boolean }) {
             disabled={saving}
           />
         </label>
-        <button className="admin-save-btn" type="button" onClick={() => { void handleApplyInterval() }} disabled={saving}>
+        <label>出来高使用率（%）
+          <input
+            className="admin-input"
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            value={volumeUsagePct}
+            onChange={(e) => setVolumeUsagePct(e.target.value)}
+            disabled={saving}
+          />
+        </label>
+        <button className="admin-save-btn" type="button" onClick={() => { void handleApplyConfig() }} disabled={saving}>
           設定反映
         </button>
       </div>
