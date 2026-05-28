@@ -124,6 +124,7 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
         var cmd = getCommand("fx");
         if (cmd != null) {
             cmd.setExecutor(executor);
+            cmd.setTabCompleter(executor);
         } else {
             getLogger().severe("plugin.yml に 'fx' コマンドが定義されていません！");
         }

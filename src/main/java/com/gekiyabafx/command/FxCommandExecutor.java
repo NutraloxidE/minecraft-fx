@@ -1,6 +1,7 @@
 package com.gekiyabafx.command;
 
 import com.gekiyabafx.GekiyabaFXPlugin;
+import com.gekiyabafx.model.AtmData;
 import com.gekiyabafx.auth.OtpManager;
 import com.gekiyabafx.model.PlayerData;
 import com.gekiyabafx.model.StorageData;
@@ -9,10 +10,24 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.Map;
 
 /**
  * {@code /fx} コマンドのメインエグゼキューター。
@@ -26,7 +41,9 @@ import org.bukkit.entity.Player;
  *   <li>{@code /fx reload} — config.yml 再読み込み</li>
  * </ul>
  */
-public final class FxCommandExecutor implements CommandExecutor {
+public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
+
+    private static final double COMMAND_ATM_MAX_DISTANCE = 3.0;
 
     /** プラグイン本体への参照。config 取得・ロガー取得に使用する。 */
     private final GekiyabaFXPlugin plugin;
@@ -73,6 +90,8 @@ public final class FxCommandExecutor implements CommandExecutor {
 
         switch (sub) {
             case "login"     -> handleLogin(sender);
+            case "deposit"   -> handleDeposit(sender, args);
+            case "withdraw"  -> handleWithdraw(sender, args);
             case "removeatm" -> handleRemoveAtm(sender, args);
             case "login-as"  -> handleLoginAs(sender, args);
             case "admin"     -> handleAdmin(sender);
@@ -83,6 +102,64 @@ public final class FxCommandExecutor implements CommandExecutor {
         }
 
         return true;
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (!command.getName().equalsIgnoreCase("fx")) {
+            return Collections.emptyList();
+        }
+
+        if (args.length == 1) {
+            List<String> subs = List.of("login", "deposit", "withdraw", "removeatm", "login-as", "admin", "reload", "help");
+            return filterByPrefix(subs, args[0]);
+        }
+
+        String sub = args[0].toLowerCase();
+
+        if (("deposit".equals(sub) || "withdraw".equals(sub)) && args.length == 2) {
+            return filterByPrefix(getCurrencyItemsFromPairs(), args[1]);
+        }
+
+        if (("deposit".equals(sub) || "withdraw".equals(sub)) && args.length == 3) {
+            return filterByPrefix(List.of("1", "16", "32", "64"), args[2]);
+        }
+
+        return Collections.emptyList();
+    }
+
+    private List<String> getCurrencyItemsFromPairs() {
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            Set<String> items = new TreeSet<>();
+            sm.getData().getPairs().values().forEach(pair -> {
+                if (pair == null) return;
+                if (pair.getBase() != null && !pair.getBase().isBlank()) {
+                    items.add(pair.getBase().toLowerCase());
+                }
+                if (pair.getQuote() != null && !pair.getQuote().isBlank()) {
+                    items.add(pair.getQuote().toLowerCase());
+                }
+            });
+
+            List<String> list = new ArrayList<>(items);
+            list.sort(Comparator.naturalOrder());
+            return list;
+        } finally {
+            sm.unlock();
+        }
+    }
+
+    private static List<String> filterByPrefix(List<String> candidates, String rawPrefix) {
+        String prefix = rawPrefix == null ? "" : rawPrefix.toLowerCase();
+        List<String> out = new ArrayList<>();
+        for (String c : candidates) {
+            if (c.toLowerCase().startsWith(prefix)) {
+                out.add(c);
+            }
+        }
+        return out;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -220,6 +297,10 @@ public final class FxCommandExecutor implements CommandExecutor {
             if (sender.hasPermission("gekiyabafx.login")) {
                 sender.sendMessage(Component.text("  /" + label + " login", NamedTextColor.AQUA)
                     .append(Component.text(" - プレイヤーログインURLを発行", NamedTextColor.GRAY)));
+                sender.sendMessage(Component.text("  /" + label + " deposit <keyname> <amount>", NamedTextColor.AQUA)
+                    .append(Component.text(" - インベントリからホット残高へ預入", NamedTextColor.GRAY)));
+                sender.sendMessage(Component.text("  /" + label + " withdraw <keyname> <amount>", NamedTextColor.AQUA)
+                    .append(Component.text(" - ホット残高からインベントリへ引出", NamedTextColor.GRAY)));
                 sender.sendMessage(Component.text("  /" + label + " removeatm", NamedTextColor.AQUA)
                     .append(Component.text(" - 自分のATMを全停止・削除", NamedTextColor.GRAY)));
             }
@@ -239,6 +320,238 @@ public final class FxCommandExecutor implements CommandExecutor {
         sender.sendMessage(Component.text("  /" + label + " help", NamedTextColor.AQUA)
             .append(Component.text(" - このヘルプを表示", NamedTextColor.GRAY)));
         }
+
+    private void handleDeposit(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                    .append(Component.text("このコマンドはゲーム内でのみ使用できます。", NamedTextColor.RED)));
+            return;
+        }
+
+        if (!player.hasPermission("gekiyabafx.login")) {
+            player.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                    .append(Component.text("このコマンドを実行する権限がありません。", NamedTextColor.RED)));
+            return;
+        }
+
+        if (args.length < 3) {
+            player.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                    .append(Component.text("使用法: /fx deposit <keyname> <amount>", NamedTextColor.RED)));
+            return;
+        }
+
+        String keyname = args[1].toLowerCase();
+        Integer amount = parsePositiveInt(args[2]);
+        Material material = Material.matchMaterial(keyname.toUpperCase());
+
+        if (amount == null || material == null) {
+            sendCommandResult(player, keyname, args[2], "deposit", false);
+            return;
+        }
+
+        if (!hasNonOccupiedAtmInRange(player, COMMAND_ATM_MAX_DISTANCE)) {
+            sendCommandResult(player, keyname, String.valueOf(amount), "deposit", false);
+            return;
+        }
+
+        int inventoryCount = countItemInInventory(player, material);
+        int executableAmount = Math.min(amount, inventoryCount);
+        if (executableAmount <= 0) {
+            sendCommandResult(player, keyname, String.valueOf(amount), "deposit", false);
+            return;
+        }
+
+        Map<Integer, ItemStack> notRemoved = player.getInventory().removeItem(new ItemStack(material, executableAmount));
+        int removed = executableAmount;
+        for (ItemStack leftover : notRemoved.values()) {
+            removed -= leftover.getAmount();
+        }
+        if (removed != executableAmount) {
+            if (removed > 0) {
+                player.getInventory().addItem(new ItemStack(material, removed));
+            }
+            sendCommandResult(player, keyname, String.valueOf(executableAmount), "deposit", false);
+            return;
+        }
+
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            StorageData data = sm.getData();
+            PlayerData pd = data.getPlayer(player.getUniqueId().toString());
+            if (pd == null) {
+                player.getInventory().addItem(new ItemStack(material, amount));
+                sendCommandResult(player, keyname, String.valueOf(amount), "deposit", false);
+                return;
+            }
+
+            BigDecimal current = pd.getHotBalance(keyname);
+            BigDecimal next = current.add(new BigDecimal(executableAmount).setScale(4, RoundingMode.HALF_UP));
+            pd.setHotBalance(keyname, next);
+            sm.markDirty();
+        } finally {
+            sm.unlock();
+        }
+
+        sendCommandResult(player, keyname, String.valueOf(executableAmount), "deposit", true);
+    }
+
+    private void handleWithdraw(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                    .append(Component.text("このコマンドはゲーム内でのみ使用できます。", NamedTextColor.RED)));
+            return;
+        }
+
+        if (!player.hasPermission("gekiyabafx.login")) {
+            player.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                    .append(Component.text("このコマンドを実行する権限がありません。", NamedTextColor.RED)));
+            return;
+        }
+
+        if (args.length < 3) {
+            player.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                    .append(Component.text("使用法: /fx withdraw <keyname> <amount>", NamedTextColor.RED)));
+            return;
+        }
+
+        String keyname = args[1].toLowerCase();
+        Integer amount = parsePositiveInt(args[2]);
+        Material material = Material.matchMaterial(keyname.toUpperCase());
+
+        if (amount == null || material == null) {
+            sendCommandResult(player, keyname, args[2], "withdraw", false);
+            return;
+        }
+
+        if (!hasNonOccupiedAtmInRange(player, COMMAND_ATM_MAX_DISTANCE)) {
+            sendCommandResult(player, keyname, String.valueOf(amount), "withdraw", false);
+            return;
+        }
+
+        if (!canFitInInventory(player, material, amount)) {
+            sendCommandResult(player, keyname, String.valueOf(amount), "withdraw", false);
+            return;
+        }
+
+        StorageManager sm = StorageManager.getInstance();
+        int executableAmount;
+        sm.lock();
+        try {
+            StorageData data = sm.getData();
+            PlayerData pd = data.getPlayer(player.getUniqueId().toString());
+            if (pd == null) {
+                sendCommandResult(player, keyname, String.valueOf(amount), "withdraw", false);
+                return;
+            }
+
+            BigDecimal current = pd.getHotBalance(keyname);
+            int maxByBalance = current.setScale(0, RoundingMode.DOWN).intValue();
+            executableAmount = Math.min(amount, maxByBalance);
+            if (executableAmount <= 0) {
+                sendCommandResult(player, keyname, String.valueOf(amount), "withdraw", false);
+                return;
+            }
+
+            BigDecimal req = new BigDecimal(executableAmount).setScale(4, RoundingMode.HALF_UP);
+            pd.setHotBalance(keyname, current.subtract(req));
+            sm.markDirty();
+        } finally {
+            sm.unlock();
+        }
+
+        Map<Integer, ItemStack> leftover = player.getInventory().addItem(new ItemStack(material, executableAmount));
+        if (!leftover.isEmpty()) {
+            int notAdded = leftover.values().stream().mapToInt(ItemStack::getAmount).sum();
+            int added = executableAmount - notAdded;
+            if (added > 0) {
+                player.getInventory().removeItem(new ItemStack(material, added));
+            }
+
+            sm.lock();
+            try {
+                PlayerData pd = sm.getData().getPlayer(player.getUniqueId().toString());
+                if (pd != null) {
+                    BigDecimal current = pd.getHotBalance(keyname);
+                    pd.setHotBalance(keyname, current.add(new BigDecimal(executableAmount).setScale(4, RoundingMode.HALF_UP)));
+                    sm.markDirty();
+                }
+            } finally {
+                sm.unlock();
+            }
+
+            sendCommandResult(player, keyname, String.valueOf(executableAmount), "withdraw", false);
+            return;
+        }
+
+        sendCommandResult(player, keyname, String.valueOf(executableAmount), "withdraw", true);
+    }
+
+    private static Integer parsePositiveInt(String raw) {
+        try {
+            int v = Integer.parseInt(raw);
+            return v > 0 ? v : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private boolean hasNonOccupiedAtmInRange(Player player, double maxDistance) {
+        StorageManager sm = StorageManager.getInstance();
+        sm.lock();
+        try {
+            World world = player.getWorld();
+            for (AtmData atm : sm.getAtmRegistry().getAtms().values()) {
+                if (atm == null) continue;
+                if (!"active".equalsIgnoreCase(atm.getStatus())) continue;
+                if (atm.isOccupied()) continue;
+                if (!world.getName().equals(atm.getSignWorld())) continue;
+
+                double dx = player.getLocation().getX() - atm.getSignX();
+                double dy = player.getLocation().getY() - atm.getSignY();
+                double dz = player.getLocation().getZ() - atm.getSignZ();
+                double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (dist <= maxDistance) {
+                    return true;
+                }
+            }
+            return false;
+        } finally {
+            sm.unlock();
+        }
+    }
+
+    private static int countItemInInventory(Player player, Material material) {
+        int total = 0;
+        for (ItemStack stack : player.getInventory().getStorageContents()) {
+            if (stack == null || stack.getType() != material) continue;
+            total += stack.getAmount();
+        }
+        return total;
+    }
+
+    private static boolean canFitInInventory(Player player, Material material, int amount) {
+        int remaining = amount;
+        int maxStack = material.getMaxStackSize();
+        for (ItemStack stack : player.getInventory().getStorageContents()) {
+            if (stack == null || stack.getType().isAir()) {
+                remaining -= maxStack;
+            } else if (stack.getType() == material) {
+                remaining -= (maxStack - stack.getAmount());
+            }
+            if (remaining <= 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void sendCommandResult(Player player, String keyname, String amount, String op, boolean success) {
+        NamedTextColor color = success ? NamedTextColor.GREEN : NamedTextColor.RED;
+        String status = success ? "success!" : "failed!";
+        player.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                .append(Component.text(keyname + " * " + amount + " " + op + " " + status, color)));
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     //  /fx login-as <serviceAccount>
