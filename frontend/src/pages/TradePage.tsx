@@ -28,7 +28,7 @@ type TradeSide = 'BUY' | 'SELL'
 export default function TradePage() {
   const navigate = useNavigate()
   const isDebug = useDebugMode()
-  const { authState, playerState, error, logout, refresh } = usePlayerAuth()
+  const { authState, playerState, error, loginWithOtp, logout, refresh } = usePlayerAuth()
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     try {
       return window.matchMedia('(max-width: 900px)').matches
@@ -61,6 +61,8 @@ export default function TradePage() {
   })
   const { orderBook } = useMarketData(selectedPairId)
   const [externalPrice, setExternalPrice] = useState<{ price: string; side: 'BUY' | 'SELL'; key: number } | null>(null)
+  const [mobileOtp, setMobileOtp] = useState('')
+  const [otpSubmitting, setOtpSubmitting] = useState(false)
 
   useEffect(() => {
     try {
@@ -157,6 +159,45 @@ export default function TradePage() {
   }
 
   if (authState === 'unauthenticated') {
+    if (isMobile) {
+      return (
+        <div className="auth-screen">
+          <h1 className="auth-title">💥GekiyabaFX</h1>
+          <p className="auth-message">マイクラで <strong>/fx login phone</strong> を実行して、表示された6桁OTPを入力してください（有効期限1分）。</p>
+
+          <form
+            className="mobile-otp-form"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              if (otpSubmitting) return
+              setOtpSubmitting(true)
+              try {
+                await loginWithOtp(mobileOtp)
+              } finally {
+                setOtpSubmitting(false)
+              }
+            }}
+          >
+            <input
+              className="mobile-otp-input"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="6桁OTP"
+              value={mobileOtp}
+              onChange={(e) => setMobileOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            />
+            <button className="mobile-otp-submit" type="submit" disabled={otpSubmitting || mobileOtp.length !== 6}>
+              {otpSubmitting ? '認証中...' : 'ログイン'}
+            </button>
+          </form>
+
+          {error && <p className="auth-message">認証エラー: {error}</p>}
+        </div>
+      )
+    }
+
     return (
       <div className="auth-screen">
         <h1 className="auth-title">💥GekiyabaFX</h1>

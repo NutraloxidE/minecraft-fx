@@ -24,11 +24,11 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class OtpManager {
 
-    /** OTPに使用する文字セット（英大文字＋数字）。 */
-    private static final String CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    /** 既定の OTP 文字セット（英大文字＋数字）。 */
+    private static final String DEFAULT_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-    /** OTP の文字数。 */
-    private static final int OTP_LENGTH = 16;
+    /** 既定の OTP 文字数。 */
+    private static final int DEFAULT_OTP_LENGTH = 16;
 
     /** 暗号学的に安全な乱数生成器。 */
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -99,13 +99,37 @@ public final class OtpManager {
     /** OTP の有効期限（秒）。コンストラクタで設定される。 */
     private final long expireSeconds;
 
+    /** OTP に使用する文字セット。 */
+    private final String characters;
+
+    /** OTP の文字数。 */
+    private final int otpLength;
+
     // ─── コンストラクタ ────────────────────────────────────────────────────────
 
     /**
      * @param expireSeconds OTP の有効期限（秒）。{@code PluginConfig#getOtpExpireSeconds()} から取得する。
      */
     public OtpManager(long expireSeconds) {
+        this(expireSeconds, DEFAULT_OTP_LENGTH, DEFAULT_CHARACTERS);
+    }
+
+    /**
+     * @param expireSeconds OTP の有効期限（秒）
+     * @param otpLength     OTP の文字数（1以上）
+     * @param characters    OTP に使用する文字セット（空白不可）
+     */
+    public OtpManager(long expireSeconds, int otpLength, String characters) {
+        if (otpLength < 1) {
+            throw new IllegalArgumentException("otpLength must be >= 1");
+        }
+        if (characters == null || characters.isBlank()) {
+            throw new IllegalArgumentException("characters must not be blank");
+        }
+
         this.expireSeconds = expireSeconds;
+        this.otpLength = otpLength;
+        this.characters = characters;
     }
 
     // ─── 公開メソッド ──────────────────────────────────────────────────────────
@@ -201,10 +225,10 @@ public final class OtpManager {
      *
      * @return 生成した OTP 文字列（{@code [A-Z0-9]} 16文字）
      */
-    private static String generateRandomOtp() {
-        StringBuilder sb = new StringBuilder(OTP_LENGTH);
-        for (int i = 0; i < OTP_LENGTH; i++) {
-            sb.append(CHARACTERS.charAt(RANDOM.nextInt(CHARACTERS.length())));
+    private String generateRandomOtp() {
+        StringBuilder sb = new StringBuilder(otpLength);
+        for (int i = 0; i < otpLength; i++) {
+            sb.append(characters.charAt(RANDOM.nextInt(characters.length())));
         }
         return sb.toString();
     }

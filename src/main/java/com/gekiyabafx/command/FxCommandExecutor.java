@@ -54,6 +54,9 @@ public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
     /** 管理者用OTPを管理する {@link OtpManager}。 */
     private final OtpManager adminOtpManager;
 
+    /** スマホ手入力用OTPを管理する {@link OtpManager}。 */
+    private final OtpManager phoneOtpManager;
+
     /**
      * コンストラクタ。
      *
@@ -64,11 +67,13 @@ public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
     public FxCommandExecutor(
             GekiyabaFXPlugin plugin,
             OtpManager playerOtpManager,
-            OtpManager adminOtpManager
+            OtpManager adminOtpManager,
+            OtpManager phoneOtpManager
     ) {
         this.plugin            = plugin;
         this.playerOtpManager  = playerOtpManager;
         this.adminOtpManager   = adminOtpManager;
+        this.phoneOtpManager   = phoneOtpManager;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -118,7 +123,7 @@ public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
         String sub = args[0].toLowerCase();
 
         if ("login".equals(sub) && args.length == 2) {
-            return filterByPrefix(List.of("longer"), args[1]);
+            return filterByPrefix(List.of("longer", "phone"), args[1]);
         }
 
         if (("deposit".equals(sub) || "withdraw".equals(sub)) && args.length == 2) {
@@ -202,6 +207,13 @@ public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
         String uuid = player.getUniqueId().toString();
         String playerName = player.getName();
         boolean longer = args.length >= 2 && "longer".equalsIgnoreCase(args[1]);
+        boolean phone = args.length >= 2 && "phone".equalsIgnoreCase(args[1]);
+
+        if (args.length >= 2 && !longer && !phone) {
+            player.sendMessage(Component.text("[GekiyabaFX] ", NamedTextColor.YELLOW)
+                .append(Component.text("使用法: /fx login [longer|phone]", NamedTextColor.RED)));
+            return;
+        }
 
         // ─── プレイヤーレコードの自動作成 ──────────────────────────────────────
         StorageManager sm = StorageManager.getInstance();
@@ -224,6 +236,20 @@ public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
             }
         } finally {
             sm.unlock();
+        }
+
+        if (phone) {
+            OtpManager.OtpEntry phoneEntry = phoneOtpManager.generate(uuid, false);
+            player.sendMessage(
+                Component.text("[GekiyabaFX] ", NamedTextColor.GOLD)
+                    .append(Component.text("スマホ用ログインコード（有効期限: 1分）", NamedTextColor.WHITE))
+            );
+            player.sendMessage(
+                Component.text("► OTP: ", NamedTextColor.GOLD)
+                    .append(Component.text(phoneEntry.getOtp(), NamedTextColor.GREEN).decorate(TextDecoration.BOLD))
+            );
+            player.sendMessage(Component.text("  スマホで /trade を開き、この6桁OTPを入力してください。", NamedTextColor.GRAY));
+            return;
         }
 
         // ─── OTP 生成 ──────────────────────────────────────────────────────────
@@ -307,6 +333,8 @@ public final class FxCommandExecutor implements CommandExecutor, TabCompleter {
                     .append(Component.text(" - プレイヤーログインURLを発行", NamedTextColor.GRAY)));
                 sender.sendMessage(Component.text("  /" + label + " login longer", NamedTextColor.AQUA)
                     .append(Component.text(" - 24時間セッションのログインURLを発行", NamedTextColor.GRAY)));
+                sender.sendMessage(Component.text("  /" + label + " login phone", NamedTextColor.AQUA)
+                    .append(Component.text(" - スマホ手入力用6桁OTP（1分）を発行", NamedTextColor.GRAY)));
                 sender.sendMessage(Component.text("  /" + label + " deposit <keyname> <amount>", NamedTextColor.AQUA)
                     .append(Component.text(" - インベントリからホット残高へ預入", NamedTextColor.GRAY)));
                 sender.sendMessage(Component.text("  /" + label + " withdraw <keyname> <amount>", NamedTextColor.AQUA)

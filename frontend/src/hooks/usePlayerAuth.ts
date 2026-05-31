@@ -27,6 +27,8 @@ export interface UsePlayerAuthResult {
   authState: AuthState
   playerState: PlayerStateResponse | null
   error: string | null
+  /** 手入力 OTP でログインする（スマホ導線） */
+  loginWithOtp: (otp: string) => Promise<void>
   /** 手動でログアウトする（トークンを削除して unauthenticated に遷移） */
   logout: () => void
   /** 認証後に playerState を再フェッチする */
@@ -97,9 +99,29 @@ export function usePlayerAuth(): UsePlayerAuthResult {
     setError(null)
   }
 
+  const loginWithOtp = async (otp: string) => {
+    const normalized = otp.trim()
+    if (!normalized) {
+      setError('invalid_otp')
+      setAuthState('unauthenticated')
+      return
+    }
+
+    try {
+      const { token } = await loginPlayer(normalized)
+      setPlayerToken(token)
+      setError(null)
+      await loadState()
+    } catch (e) {
+      setAuthState('unauthenticated')
+      if (e instanceof ApiException) setError(e.code)
+      else setError('unknown_error')
+    }
+  }
+
   const refresh = async () => {
     await loadState()
   }
 
-  return { authState, playerState, error, logout, refresh }
+  return { authState, playerState, error, loginWithOtp, logout, refresh }
 }

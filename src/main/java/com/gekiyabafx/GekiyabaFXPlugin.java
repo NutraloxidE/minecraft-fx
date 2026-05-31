@@ -45,6 +45,9 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
     /** 管理者用OTPマネージャー。コマンド実行クラスと認証アピイで共有する。 */
     private OtpManager adminOtpManager;
 
+    /** スマホ手入力用OTPマネージャー（数字6桁/60秒）。 */
+    private OtpManager phoneOtpManager;
+
     /** プレイヤー用セッションマネージャー。Step 11 の認証エンドポイントから参照する。 */
     private SessionManager playerSessionManager;
 
@@ -115,12 +118,13 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
         // ④ OtpManager ・ SessionManager を生成する（config の expire 値を使用）
         playerOtpManager    = new OtpManager(pluginConfig.getOtpExpireSeconds());
         adminOtpManager     = new OtpManager(pluginConfig.getOtpExpireSeconds());
+        phoneOtpManager     = new OtpManager(60L, 6, "0123456789");
         playerSessionManager = new SessionManager(pluginConfig.getSessionExpireSeconds());
         adminSessionManager  = new SessionManager(pluginConfig.getSessionExpireSeconds());
         atmSessionManager    = new AtmSessionManager();
 
         // ⑤ /fx コマンドに FxCommandExecutor を登録する
-        FxCommandExecutor executor = new FxCommandExecutor(this, playerOtpManager, adminOtpManager);
+        FxCommandExecutor executor = new FxCommandExecutor(this, playerOtpManager, adminOtpManager, phoneOtpManager);
         var cmd = getCommand("fx");
         if (cmd != null) {
             cmd.setExecutor(executor);
@@ -143,6 +147,7 @@ public final class GekiyabaFXPlugin extends JavaPlugin {
         new AuthRouter(
                 playerOtpManager,
                 adminOtpManager,
+                phoneOtpManager,
                 playerSessionManager,
             adminSessionManager,
             atmSessionManager

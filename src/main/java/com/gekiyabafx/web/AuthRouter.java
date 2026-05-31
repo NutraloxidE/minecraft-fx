@@ -46,6 +46,7 @@ public final class AuthRouter {
 
     private final OtpManager     playerOtpManager;
     private final OtpManager     adminOtpManager;
+    private final OtpManager     phoneOtpManager;
     private final SessionManager playerSessionManager;
     private final SessionManager adminSessionManager;
     private final AtmSessionManager atmSessionManager;
@@ -59,12 +60,14 @@ public final class AuthRouter {
     public AuthRouter(
             OtpManager     playerOtpManager,
             OtpManager     adminOtpManager,
+            OtpManager     phoneOtpManager,
             SessionManager playerSessionManager,
             SessionManager adminSessionManager,
             AtmSessionManager atmSessionManager
     ) {
         this.playerOtpManager     = playerOtpManager;
         this.adminOtpManager      = adminOtpManager;
+        this.phoneOtpManager      = phoneOtpManager;
         this.playerSessionManager = playerSessionManager;
         this.adminSessionManager  = adminSessionManager;
         this.atmSessionManager    = atmSessionManager;
@@ -102,7 +105,7 @@ public final class AuthRouter {
      * @param ctx Javalin コンテキスト
      */
     private void handlePlayerAuth(Context ctx) {
-        exchangeOtp(ctx, playerOtpManager, playerSessionManager, atmSessionManager);
+        exchangeOtp(ctx, playerOtpManager, phoneOtpManager, playerSessionManager, atmSessionManager);
     }
 
     /**
@@ -114,7 +117,7 @@ public final class AuthRouter {
      * @param ctx Javalin コンテキスト
      */
     private void handleAdminAuth(Context ctx) {
-        exchangeOtp(ctx, adminOtpManager, adminSessionManager, null);
+        exchangeOtp(ctx, adminOtpManager, null, adminSessionManager, null);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -131,6 +134,7 @@ public final class AuthRouter {
     private static void exchangeOtp(
             Context ctx,
             OtpManager otpManager,
+            OtpManager fallbackOtpManager,
             SessionManager sessionManager,
             AtmSessionManager atmSessionManager
     ) {
@@ -152,6 +156,9 @@ public final class AuthRouter {
 
         // ── OTP 消費 ─────────────────────────────────────────────────────────
         OtpManager.OtpEntry otpEntry = otpManager.consume(otp);
+        if (otpEntry == null && fallbackOtpManager != null) {
+            otpEntry = fallbackOtpManager.consume(otp);
+        }
         if (otpEntry == null) {
             // 存在しない・期限切れ・すでに使用済み
             ctx.status(401).json(Map.of("error", "invalid_otp"));
